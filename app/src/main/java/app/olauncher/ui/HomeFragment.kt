@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.view.setPadding
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
@@ -33,6 +34,7 @@ import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
+import app.olauncher.helper.formatWeather
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
 import app.olauncher.helper.isPackageInstalled
@@ -55,6 +57,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var deviceManager: DevicePolicyManager
 
     private var _binding: FragmentHomeBinding? = null
+    private var homeAppsPaddingTop = -1
     private val binding get() = _binding!!
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -92,6 +95,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             // R.id.recents -> {}
             R.id.clock -> openClockApp()
             R.id.date -> openCalendarApp()
+            R.id.weather -> viewModel.refreshWeather(force = true)
             R.id.setDefaultLauncher -> viewModel.resetLauncherLiveData.call()
             R.id.tvScreenTime -> openScreenTimeDigitalWellbeing()
 
@@ -200,6 +204,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         viewModel.toggleDateTime.observe(viewLifecycleOwner) {
             populateDateTime()
         }
+        viewModel.weather.observe(viewLifecycleOwner) {
+            populateWeather()
+        }
         viewModel.screenTimeValue.observe(viewLifecycleOwner) {
             it?.let { binding.tvScreenTime.text = it }
         }
@@ -230,6 +237,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.setOnClickListener(this)
         binding.clock.setOnLongClickListener(this)
         binding.date.setOnLongClickListener(this)
+        binding.weather.setOnClickListener(this)
         binding.setDefaultLauncher.setOnClickListener(this)
         binding.setDefaultLauncher.setOnLongClickListener(this)
         binding.tvScreenTime.setOnClickListener(this)
@@ -270,6 +278,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun populateDateTime() {
         binding.dateTimeLayout.isVisible = prefs.dateTimeVisibility != Constants.DateTime.OFF
+                || prefs.weatherUnit != Constants.Weather.OFF
         binding.clock.isVisible = Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
         binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility)
 
@@ -284,6 +293,19 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 dateText = getString(R.string.day_battery, dateText, battery)
         }
         binding.date.text = dateText.replace(".,", ",")
+    }
+
+    private fun populateWeather() {
+        val weather = viewModel.weather.value
+        val showWeather = prefs.weatherUnit != Constants.Weather.OFF && weather != null
+        binding.weather.isVisible = showWeather
+        if (weather != null) binding.weather.text = requireContext().formatWeather(weather, prefs.weatherUnit)
+        // Keep the extra line clear of the home apps below
+        if (homeAppsPaddingTop < 0) homeAppsPaddingTop = binding.homeAppsLayout.paddingTop
+        val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        binding.homeAppsLayout.updatePadding(
+            top = homeAppsPaddingTop + if (showWeather && isPortrait) 28.dpToPx() else 0
+        )
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -316,6 +338,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private fun populateHomeScreen(appCountUpdated: Boolean) {
         if (appCountUpdated) hideHomeApps()
         populateDateTime()
+        populateWeather()
+        viewModel.refreshWeather()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             populateScreenTime()

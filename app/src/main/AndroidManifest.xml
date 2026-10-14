@@ -8,8 +8,10 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-    <!--Used only for downloading wallpapers-->
+    <!--Used for downloading wallpapers and weather-->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!--Used only for the optional home screen weather, when no city is set-->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!--Used only for opening alarm app-->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission

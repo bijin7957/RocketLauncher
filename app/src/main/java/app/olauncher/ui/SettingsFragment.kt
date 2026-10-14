@@ -1,5 +1,6 @@
 package app.olauncher.ui
 
+import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -13,9 +14,13 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
+import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import app.olauncher.BuildConfig
@@ -24,10 +29,12 @@ import app.olauncher.R
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogTextSizeBinding
+import app.olauncher.databinding.DialogWeatherCityBinding
 import app.olauncher.databinding.FragmentSettingsBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.createDialog
 import app.olauncher.helper.getColorFromAttr
+import app.olauncher.helper.hasLocationPermission
 import app.olauncher.helper.hideStatusBar
 import app.olauncher.helper.isAccessServiceEnabled
 import app.olauncher.helper.isDarkThemeOn
@@ -56,6 +63,12 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     private val binding get() = _binding!!
     private val showPentastic = System.currentTimeMillis() % 2 == 0L
     private var dialog: OlDialog? = null
+
+    private val locationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) viewModel.refreshWeather(force = true)
+            else requireContext().showToast(getString(R.string.weather_location_needed), Toast.LENGTH_LONG)
+        }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentSettingsBinding.inflate(inflater, container, false)
@@ -88,6 +101,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateAlignment()
         populateStatusBar()
         populateDateTime()
+        populateWeather()
+        populateAlphabetScroller()
         populateSwipeApps()
         populateActionHints()
         initClickListeners()
@@ -114,6 +129,9 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.alignment -> showAlignmentMenu(view)
             R.id.statusBar -> toggleStatusBar()
             R.id.dateTime -> showDateTimeMenu(view)
+            R.id.weatherUnit -> showWeatherUnitMenu(view)
+            R.id.weatherCity -> showWeatherCityDialog()
+            R.id.alphabetScroller -> toggleAlphabetScroller()
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = false)
             R.id.textSizeValue -> showTextSizeDialog()
             R.id.boldFont -> toggleBoldFont()
@@ -177,6 +195,9 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.alignment.setOnClickListener(this)
         binding.statusBar.setOnClickListener(this)
         binding.dateTime.setOnClickListener(this)
+        binding.weatherUnit.setOnClickListener(this)
+        binding.weatherCity.setOnClickListener(this)
+        binding.alphabetScroller.setOnClickListener(this)
         binding.swipeLeftApp.setOnClickListener(this)
         binding.swipeRightApp.setOnClickListener(this)
         binding.appThemeText.setOnClickListener(this)
@@ -215,6 +236,9 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         viewModel.updateSwipeApps.observe(viewLifecycleOwner) {
             populateSwipeApps()
         }
+        viewModel.weatherCityNotFound.observe(viewLifecycleOwner) {
+            requireContext().showToast(getString(R.string.weather_city_not_found))
+        }
     }
 
     // Popup menus
@@ -235,6 +259,16 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
                 R.id.dateOnly -> toggleDateTime(Constants.DateTime.DATE_ONLY)
             }
         }
+    }
+
+    private fun showWeatherUnitMenu(anchor: View) {
+        anchor.showPopupMenu(
+            configure = { menu ->
+                menu.add(Menu.NONE, Constants.Weather.OFF, 0, R.string.off)
+                menu.add(Menu.NONE, Constants.Weather.CELSIUS, 1, R.string.celsius)
+                menu.add(Menu.NONE, Constants.Weather.FAHRENHEIT, 2, R.string.fahrenheit)
+            }
+        ) { item -> updateWeatherUnit(item.itemId) }
     }
 
     private fun showAlignmentMenu(anchor: View) {
@@ -275,6 +309,35 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         dialog?.dismiss()
         dialog = newDialog
         newDialog.showRespectingStatusBar()
+    }
+
+    private fun showWeatherCityDialog() {
+        var cityInput: EditText? = null
+        val dialog = requireContext().createDialog(
+            title = R.string.weather_location,
+            action = R.string.save,
+            onAction = { saveWeatherCity(cityInput?.text?.toString().orEmpty()) },
+        ) { container ->
+            DialogWeatherCityBinding.inflate(layoutInflater, container, false).root.also {
+                it.setText(prefs.weatherCity)
+                it.setSelection(it.length())
+                cityInput = it
+            }
+        }
+        cityInput?.setOnEditorActionListener { view, actionId, _ ->
+            if (actionId != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
+            saveWeatherCity(view.text.toString())
+            dialog.dismiss()
+            true
+        }
+        showDialog(dialog)
+    }
+
+    private fun saveWeatherCity(city: String) {
+        if (city.trim() == prefs.weatherCity) return
+        viewModel.setWeatherCity(city)
+        populateWeather()
+        if (city.isBlank()) requestLocationIfNeeded()
     }
 
     private fun showTextSizeDialog() {
@@ -347,6 +410,46 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         prefs.dateTimeVisibility = selected
         populateDateTime()
         viewModel.toggleDateTime()
+    }
+
+    private fun updateWeatherUnit(unit: Int) {
+        val wasOff = prefs.weatherUnit == Constants.Weather.OFF
+        prefs.weatherUnit = unit
+        populateWeather()
+        viewModel.toggleDateTime()
+        if (unit == Constants.Weather.OFF) {
+            viewModel.refreshWeather()
+            return
+        }
+        if (wasOff) requestLocationIfNeeded()
+        viewModel.refreshWeather(force = wasOff)
+    }
+
+    private fun requestLocationIfNeeded() {
+        if (prefs.weatherUnit == Constants.Weather.OFF || prefs.weatherCity.isNotBlank()) return
+        if (requireContext().hasLocationPermission()) return
+        locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+    }
+
+    private fun populateWeather() {
+        binding.weatherUnit.text = getString(
+            when (prefs.weatherUnit) {
+                Constants.Weather.CELSIUS -> R.string.celsius
+                Constants.Weather.FAHRENHEIT -> R.string.fahrenheit
+                else -> R.string.off
+            }
+        )
+        binding.weatherCityLayout.isVisible = prefs.weatherUnit != Constants.Weather.OFF
+        binding.weatherCity.text = prefs.weatherCity.ifBlank { getString(R.string.weather_current_location) }
+    }
+
+    private fun toggleAlphabetScroller() {
+        prefs.alphabetScroller = !prefs.alphabetScroller
+        populateAlphabetScroller()
+    }
+
+    private fun populateAlphabetScroller() {
+        binding.alphabetScroller.text = getString(if (prefs.alphabetScroller) R.string.on else R.string.off)
     }
 
     private fun populateDateTime() {

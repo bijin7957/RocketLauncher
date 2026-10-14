@@ -69,6 +69,12 @@ class AppDrawerAdapter(
 
     var appsList: MutableList<AppModel> = mutableListOf()
     var appFilteredList: MutableList<AppModel> = mutableListOf()
+    var onListChanged: (() -> Unit)? = null
+
+    override fun onCurrentListChanged(previousList: MutableList<AppModel>, currentList: MutableList<AppModel>) {
+        super.onCurrentListChanged(previousList, currentList)
+        onListChanged?.invoke()
+    }
 
     override fun getItemViewType(position: Int): Int {
         return when (appFilteredList.getOrNull(position)) {
@@ -198,6 +204,27 @@ class AppDrawerAdapter(
         this.appsList = appsList
         this.appFilteredList = appsList
         submitList(appsList)
+    }
+
+    /** Index letters for the apps currently shown, in list order, private space excluded. */
+    fun sectionLetters(): List<String> =
+        appFilteredList.asSequence()
+            .takeWhile { it !is AppModel.PrivateSpaceHeader }
+            .filter { it.appLabel.isNotBlank() }
+            .map { sectionLetter(it.appLabel) }
+            .distinct()
+            .toList()
+
+    fun firstPositionForLetter(letter: String): Int =
+        appFilteredList.indexOfFirst {
+            it !is AppModel.PrivateSpaceHeader && it.appLabel.isNotBlank() && sectionLetter(it.appLabel) == letter
+        }
+
+    private fun sectionLetter(label: String): String {
+        val first = Normalizer.normalize(label.trim().take(1), Normalizer.Form.NFD)
+            .replace(diacriticsRegex, "")
+            .uppercase()
+        return if (first.isNotEmpty() && first[0].isLetter()) first.take(1) else "#"
     }
 
     fun launchFirstInList() {

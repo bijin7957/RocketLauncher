@@ -46,6 +46,7 @@ class Prefs(context: Context) {
     private val WEATHER_WIDGET_ID = "WEATHER_WIDGET_ID"
     private val WEATHER_TRANSPARENT = "WEATHER_TRANSPARENT"
     private val SECOND_TIME_ZONE = "SECOND_TIME_ZONE"
+    private val SECOND_CLOCK_LABEL = "SECOND_CLOCK_LABEL"
     // Home button for recents feature disabled
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
@@ -237,6 +238,11 @@ class Prefs(context: Context) {
     var secondTimeZone: String
         get() = prefs.getString(SECOND_TIME_ZONE, "").toString()
         set(value) = prefs.edit { putString(SECOND_TIME_ZONE, value).apply() }
+
+    // Name shown on the second clock, like "Kochi" for Asia/Kolkata; blank shows the zone's city
+    var secondClockLabel: String
+        get() = prefs.getString(SECOND_CLOCK_LABEL, "").toString()
+        set(value) = prefs.edit { putString(SECOND_CLOCK_LABEL, value).apply() }
 
     var launcherRestartTimestamp: Long
         get() = prefs.getLong(LAUNCHER_RESTART_TIMESTAMP, 0L)

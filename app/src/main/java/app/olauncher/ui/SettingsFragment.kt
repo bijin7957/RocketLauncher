@@ -16,6 +16,8 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
@@ -31,6 +33,7 @@ import app.olauncher.R
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogTextSizeBinding
+import app.olauncher.databinding.DialogClockLabelBinding
 import app.olauncher.databinding.DialogTimeZonePickerBinding
 import app.olauncher.databinding.DialogWidgetPickerBinding
 import app.olauncher.databinding.FragmentSettingsBinding
@@ -412,7 +415,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
     private fun populateSecondClock() {
         val zone = prefs.secondTimeZone
-        binding.secondClock.text = if (zone.isBlank()) getString(R.string.off) else timeZoneCity(zone)
+        binding.secondClock.text = if (zone.isBlank()) getString(R.string.off)
+        else prefs.secondClockLabel.ifBlank { timeZoneCity(zone) }
     }
 
     private fun showTimeZonePicker() {
@@ -427,7 +431,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
                 val adapter = TimeZonePickerAdapter(timeZoneChoices()) { choice ->
                     timeZoneSearch.hideKeyboard()
                     picker.dismiss()
-                    setSecondTimeZone(choice.id)
+                    showClockLabelDialog(choice.id)
                 }
                 timeZoneChoices.layoutManager = LinearLayoutManager(requireContext())
                 timeZoneChoices.adapter = adapter
@@ -438,8 +442,34 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         showDialog(picker)
     }
 
-    private fun setSecondTimeZone(zone: String) {
+    // A zone is named after one city, so the clock can be named after another, e.g. Kochi for Kolkata
+    private fun showClockLabelDialog(zone: String) {
+        var labelInput: EditText? = null
+        val dialog = requireContext().createDialog(
+            title = R.string.clock_name,
+            action = R.string.save,
+            onAction = { setSecondTimeZone(zone, labelInput?.text?.toString().orEmpty()) },
+        ) { container ->
+            DialogClockLabelBinding.inflate(layoutInflater, container, false).root.also {
+                it.hint = timeZoneCity(zone)
+                it.setText(timeZoneCity(zone))
+                it.setSelection(it.length())
+                labelInput = it
+            }
+        }
+        labelInput?.setOnEditorActionListener { view, actionId, _ ->
+            if (actionId != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
+            setSecondTimeZone(zone, view.text.toString())
+            dialog.dismiss()
+            true
+        }
+        showDialog(dialog)
+    }
+
+    private fun setSecondTimeZone(zone: String, label: String = "") {
         prefs.secondTimeZone = zone
+        // Blank or unchanged keeps following the zone's own city name
+        prefs.secondClockLabel = label.trim().takeIf { it != timeZoneCity(zone) }.orEmpty()
         populateSecondClock()
         viewModel.toggleDateTime()
     }

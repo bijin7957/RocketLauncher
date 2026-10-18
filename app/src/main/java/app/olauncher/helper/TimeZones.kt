@@ -1,5 +1,7 @@
 package app.olauncher.helper
 
+import android.icu.text.TimeZoneNames
+import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.abs
 
@@ -9,20 +11,38 @@ data class TimeZoneChoice(val id: String, val city: String, val detail: String)
 
 private val cityZoneRegex = Regex("^(Africa|America|Asia|Atlantic|Australia|Europe|Indian|Pacific)/.+")
 
-/** "Asia/Kolkata" -> "Kolkata", "America/Argentina/Buenos_Aires" -> "Buenos Aires" */
-fun timeZoneCity(id: String): String = id.substringAfterLast('/').replace('_', ' ')
+private val zoneNames by lazy { TimeZoneNames.getInstance(Locale.getDefault()) }
 
-/** City time zones, by city name, with their region and current UTC offset, e.g. "Asia · GMT+5:30". */
+/**
+ * The zone's city in the phone's language, current spelling: "Asia/Calcutta" -> "Kolkata".
+ * Falls back to the id itself: "America/Argentina/Buenos_Aires" -> "Buenos Aires".
+ */
+fun timeZoneCity(id: String): String =
+    runCatching { zoneNames.getExemplarLocationName(id) }.getOrNull()
+        ?.takeIf { it.isNotBlank() }
+        ?: id.substringAfterLast('/').replace('_', ' ')
+
+/**
+ * City time zones, by city name, with their country and current UTC offset, e.g. "India · GMT+5:30".
+ * A zone is named after one city, so the country lets "India" find Kolkata.
+ */
 fun timeZoneChoices(): List<TimeZoneChoice> {
     val now = System.currentTimeMillis()
     return TimeZone.getAvailableIDs()
-        // Skips old aliases like "Australia/ACT" that duplicate a city zone
+        // One id per zone: skips aliases like "Australia/ACT" or "Asia/Kolkata" for "Asia/Calcutta",
+        // whose city still shows with its current name
         .filter { cityZoneRegex.matches(it) && android.icu.util.TimeZone.getCanonicalID(it) == it }
         .map { id ->
-            val region = id.substringBeforeLast('/').replace('_', ' ').replace("/", " · ")
-            TimeZoneChoice(id, timeZoneCity(id), "$region · ${gmtOffset(TimeZone.getTimeZone(id).getOffset(now))}")
+            TimeZoneChoice(id, timeZoneCity(id), "${timeZoneCountry(id)} · ${gmtOffset(TimeZone.getTimeZone(id).getOffset(now))}")
         }
         .sortedBy { it.city.lowercase() }
+}
+
+// Country of the zone in the phone's language, or its region like "Asia" when it has none
+private fun timeZoneCountry(id: String): String {
+    val code = runCatching { android.icu.util.TimeZone.getRegion(id) }.getOrNull()
+    val country = if (code != null && code != "001") Locale.Builder().setRegion(code).build().displayCountry else ""
+    return country.ifBlank { id.substringBeforeLast('/').replace('_', ' ').replace("/", " · ") }
 }
 
 private fun gmtOffset(offsetMillis: Int): String {
@@ -33,10 +53,10 @@ private fun gmtOffset(offsetMillis: Int): String {
 }
 
 /**
- * TextClock pattern like "'Kolkata' · EEE h:mm a". The weekday shows when it is already
- * tomorrow or still yesterday there; quotes in the city are doubled to stay literal.
+ * TextClock pattern like "'Kochi' · EEE h:mm a", with [label] or else the zone's city. The weekday
+ * shows when it is already tomorrow or still yesterday there; quotes are doubled to stay literal.
  */
-fun secondClockFormat(id: String, is24Hour: Boolean): String {
-    val city = timeZoneCity(id).replace("'", "''")
-    return "'$city' · EEE " + if (is24Hour) "HH:mm" else "h:mm a"
+fun secondClockFormat(id: String, label: String, is24Hour: Boolean): String {
+    val name = label.ifBlank { timeZoneCity(id) }.replace("'", "''")
+    return "'$name' · EEE " + if (is24Hour) "HH:mm" else "h:mm a"
 }

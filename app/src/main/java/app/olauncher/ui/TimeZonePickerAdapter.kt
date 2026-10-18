@@ -16,12 +16,22 @@ class TimeZonePickerAdapter(
 
     private var shown = choices
 
-    /** Keeps the zones whose city, region or offset contains [query]. */
+    /**
+     * Keeps the zones whose city, country or offset contains [query]: zones in a country named
+     * exactly that first, then cities starting with it, so "India" lists Kolkata before Indianapolis.
+     */
     @SuppressLint("NotifyDataSetChanged")
     fun filter(query: String) {
         val text = query.trim()
         shown = if (text.isEmpty()) choices
         else choices.filter { it.city.contains(text, true) || it.detail.contains(text, true) }
+            .sortedBy {
+                when {
+                    it.detail.substringBefore(" · ").equals(text, true) -> 0
+                    it.city.startsWith(text, true) -> 1
+                    else -> 2
+                }
+            }
         notifyDataSetChanged()
     }
 

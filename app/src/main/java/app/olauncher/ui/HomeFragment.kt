@@ -333,8 +333,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.secondClock.isVisible = zone.isNotBlank() && prefs.dateTimeVisibility != Constants.DateTime.OFF
         if (zone.isBlank()) return
         binding.secondClock.timeZone = zone
-        binding.secondClock.format12Hour = secondClockFormat(zone, is24Hour = false)
-        binding.secondClock.format24Hour = secondClockFormat(zone, is24Hour = true)
+        binding.secondClock.format12Hour = secondClockFormat(zone, prefs.secondClockLabel, is24Hour = false)
+        binding.secondClock.format24Hour = secondClockFormat(zone, prefs.secondClockLabel, is24Hour = true)
     }
 
     private fun populateWeatherWidget() {

@@ -193,6 +193,37 @@
 
     </LinearLayout>
 
+    <!-- Apps for the letter picked on the alphabet scroller, shown in place of the home apps -->
+    <ScrollView
+        android:id="@+id/letterAppsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginHorizontal="74dp"
+        android:fadingEdgeLength="24dp"
+        android:fillViewport="true"
+        android:requiresFadingEdge="vertical"
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/letterAppsLayout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/letterHeader"
+                style="@style/TextLarge"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:textStyle="bold"
+                tools:text="M" />
+        </LinearLayout>
+    </ScrollView>
+
     <TextView
         android:id="@+id/firstRunTips"
         style="@style/TextSmall"
@@ -217,4 +248,12 @@
         android:maxLines="1"
         android:text="@string/set_as_default_launcher_u"
         android:visibility="gone" />
+
+    <!-- Full screen so the letter curve has room; only the edge strip takes touches -->
+    <app.olauncher.ui.AlphabetScrollerView
+        android:id="@+id/alphabetScroller"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
 </FrameLayout>

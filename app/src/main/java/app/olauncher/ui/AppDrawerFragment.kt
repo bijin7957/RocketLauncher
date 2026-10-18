@@ -5,7 +5,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.text.Spannable
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,7 +13,6 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
 import androidx.appcompat.widget.SearchView
-import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -77,7 +75,6 @@ class AppDrawerFragment : BaseFragment() {
         initViews()
         initSearch()
         initAdapter()
-        initAlphabetScroller()
         initObservers()
         initClickListeners()
     }
@@ -111,7 +108,6 @@ class AppDrawerFragment : BaseFragment() {
                 try {
                     adapter.allowAutoLaunch = !isSearchComposing()
                     adapter.filter.filter(newText)
-                    if (newText.isNotBlank()) binding.alphabetScroller.isVisible = false
                     binding.appRename.visibility =
                         if (canRename && newText.isNotBlank()) View.VISIBLE else View.GONE
                     return true
@@ -254,8 +250,6 @@ class AppDrawerFragment : BaseFragment() {
             }
         }
 
-        adapter.onListChanged = { updateAlphabetScroller() }
-
         binding.recyclerView.layoutManager = linearLayoutManager
         binding.recyclerView.adapter = adapter
         binding.recyclerView.addOnScrollListener(getRecyclerViewOnScrollListener())
@@ -265,29 +259,6 @@ class AppDrawerFragment : BaseFragment() {
         else if (requireContext().isSystemAnimationsDisabled().not())
             binding.recyclerView.layoutAnimation =
                 AnimationUtils.loadLayoutAnimation(requireContext(), R.anim.layout_anim_from_bottom)
-    }
-
-    private fun initAlphabetScroller() {
-        binding.alphabetScroller.alignStart = prefs.appLabelAlignment == Gravity.END
-        binding.alphabetScroller.onTouchStateChanged = { touching ->
-            if (touching) {
-                binding.search.hideKeyboard()
-                binding.recyclerView.stopScroll()
-            }
-        }
-        binding.alphabetScroller.onLetterSelected = { letter ->
-            val position = adapter.firstPositionForLetter(letter)
-            if (position >= 0) linearLayoutManager.scrollToPositionWithOffset(position, 0)
-        }
-    }
-
-    private fun updateAlphabetScroller() {
-        val binding = _binding ?: return
-        val letters = adapter.sectionLetters()
-        binding.alphabetScroller.setLetters(letters)
-        binding.alphabetScroller.isVisible = prefs.alphabetScroller
-                && binding.search.query.isNullOrBlank()
-                && letters.size > 1
     }
 
     private fun initObservers() {

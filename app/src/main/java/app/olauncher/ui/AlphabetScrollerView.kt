@@ -13,16 +13,17 @@ import android.view.View
 import android.view.animation.DecelerateInterpolator
 import app.olauncher.R
 import app.olauncher.helper.getColorFromAttr
+import java.text.Normalizer
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * Letter index along the edge of the app drawer. Dragging along it bends the
+ * Letter index along the edge of the home screen. Dragging along it bends the
  * letters into a curve around the finger, shows the current letter in a bubble
  * and reports it through [onLetterSelected].
  *
- * The view is meant to overlay the list at full width so the curve has room to
+ * The view is meant to overlay the screen at full width so the curve has room to
  * draw, but it only claims touches that start inside the narrow edge strip.
  */
 class AlphabetScrollerView @JvmOverloads constructor(
@@ -31,8 +32,19 @@ class AlphabetScrollerView @JvmOverloads constructor(
     defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
 
+    companion object {
+        private val diacriticsRegex = Regex("\\p{InCombiningDiacriticalMarks}+")
+
+        /** Index letter for an app label: its first letter without accents, or "#". */
+        fun sectionLetter(label: String): String {
+            val first = Normalizer.normalize(label.trim().take(1), Normalizer.Form.NFD)
+                .replace(diacriticsRegex, "")
+                .uppercase()
+            return if (first.isNotEmpty() && first[0].isLetter()) first.take(1) else "#"
+        }
+    }
+
     var onLetterSelected: ((String) -> Unit)? = null
-    var onTouchStateChanged: ((Boolean) -> Unit)? = null
 
     /** Draw the index along the start edge instead of the end edge. */
     var alignStart = false
@@ -155,7 +167,7 @@ class AlphabetScrollerView @JvmOverloads constructor(
 
                 parent?.requestDisallowInterceptTouchEvent(true)
                 touching = true
-                onTouchStateChanged?.invoke(true)
+                selectedIndex = -1 // Picking the same letter again still reports it
                 animateProgress(1f)
                 updateSelection(event.y)
                 return true
@@ -171,7 +183,6 @@ class AlphabetScrollerView @JvmOverloads constructor(
                 if (!touching) return false
                 touching = false
                 parent?.requestDisallowInterceptTouchEvent(false)
-                onTouchStateChanged?.invoke(false)
                 animateProgress(0f)
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 return true

@@ -34,7 +34,8 @@
         android:visibility="gone"
         tools:visibility="visible">
 
-        <!-- Local clock, with a second time zone beside it when one is set in Settings > Second clock -->
+        <!-- Local clock, with a second time zone beside it when one is set in Settings > Second clock.
+             Each shows its name and date under it; the shared date line then hides. -->
         <LinearLayout
             android:id="@+id/clocksRow"
             android:layout_width="wrap_content"
@@ -67,12 +68,25 @@
                     android:textSize="@dimen/date_size"
                     android:visibility="gone"
                     tools:visibility="visible" />
+
+                <TextClock
+                    android:id="@+id/localDate"
+                    style="@style/TextDefault"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:format12Hour="EEE, d MMM"
+                    android:format24Hour="EEE, d MMM"
+                    android:visibility="gone"
+                    android:paddingHorizontal="3dp"
+                    android:textSize="@dimen/date_size"
+                    tools:text="Sat, 17 Oct" />
             </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/secondClockLayout"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:alpha="0.75"
                 android:layout_marginStart="32dp"
                 android:orientation="vertical"
                 android:visibility="gone"
@@ -89,15 +103,25 @@
                     android:textSize="@dimen/time_size"
                     tools:text="7:14" />
 
-                <!-- "Kochi · Sun a.m.": the weekday shows when it is another day there -->
-                <TextClock
+                <TextView
                     android:id="@+id/secondClockLabel"
                     style="@style/TextDefault"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:paddingHorizontal="3dp"
                     android:textSize="@dimen/date_size"
-                    tools:text="Kochi · Sun a.m." />
+                    tools:text="Kochi" />
+
+                <TextClock
+                    android:id="@+id/secondDate"
+                    style="@style/TextDefault"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:format12Hour="EEE, d MMM"
+                    android:format24Hour="EEE, d MMM"
+                    android:paddingHorizontal="3dp"
+                    android:textSize="@dimen/date_size"
+                    tools:text="Sat, 17 Oct" />
             </LinearLayout>
         </LinearLayout>
 

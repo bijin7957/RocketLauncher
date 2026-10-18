@@ -8,9 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.res.Configuration
+import android.graphics.Paint
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.text.format.DateFormat
 import android.util.SizeF
 import android.util.TypedValue
 import android.view.Gravity
@@ -41,7 +43,7 @@ import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
 import app.olauncher.helper.WeatherWidgetHostView
-import app.olauncher.helper.secondClockLabelFormat
+import app.olauncher.helper.timeZoneCity
 import app.olauncher.helper.weatherWidgetHost
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
@@ -66,6 +68,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private var _binding: FragmentHomeBinding? = null
     private var homeAppsPaddingTop = -1
+    private var batteryText = ""
     private var widgetHost: AppWidgetHost? = null
     // Added only while the letter apps show: the activity re-registers its own callback on every
     // start, so one tied to this fragment's lifecycle would end up behind it
@@ -97,6 +100,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         // The weather widget can change height after it loads, so re-fit the home apps
         binding.dateTimeLayout.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             if (bottom - top != oldBottom - oldTop) binding.root.post { updateHomeAppsPadding() }
+            binding.root.post { fitClocks() }
         }
     }
 
@@ -237,7 +241,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             populateDateTime()
         }
         viewModel.screenTimeValue.observe(viewLifecycleOwner) {
-            it?.let { binding.tvScreenTime.text = it }
+            it?.let { showScreenTime() }
         }
         // Home button for recents feature disabled
         // viewModel.showRecentApps.observe(viewLifecycleOwner) {
@@ -315,37 +319,72 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.dateTimeLayout.isVisible = prefs.dateTimeVisibility != Constants.DateTime.OFF
                 || prefs.weatherWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID
         binding.clocksRow.isVisible = Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
-        binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility)
-        populateSecondClock()
+        val secondClockShown = populateSecondClock()
+        // Side by side, each clock shows its own date, so the shared date line hides
+        binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility) && !secondClockShown
 
 //        var dateText = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date())
         val dateFormat = SimpleDateFormat("EEE, d MMM", Locale.getDefault())
         var dateText = dateFormat.format(Date())
 
+        // Battery sits with the screen time when that shows, else after the date
+        batteryText = ""
         if (!prefs.showStatusBar) {
             val battery = (requireContext().getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
                 .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            if (battery > 0)
-                dateText = getString(R.string.day_battery, dateText, battery)
+            if (battery > 0 && isScreenTimeShown()) batteryText = "$battery%"
+            else if (battery > 0) dateText = getString(R.string.day_battery, dateText, battery)
         }
         binding.date.text = dateText.replace(".,", ",")
+        showScreenTime()
     }
 
-    private fun populateSecondClock() {
+    private fun isScreenTimeShown() =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && requireContext().appUsagePermissionGranted()
+
+    // Like "3m · 84%"
+    private fun showScreenTime() {
+        val screenTime = viewModel.screenTimeValue.value ?: return
+        binding.tvScreenTime.text = listOf(screenTime, batteryText).filter { it.isNotBlank() }.joinToString(" · ")
+        binding.root.post { fitClocks() }
+    }
+
+    /** Shows the second clock beside the local one when a time zone is set; returns whether it shows. */
+    private fun populateSecondClock(): Boolean {
         val zone = prefs.secondTimeZone
         val show = zone.isNotBlank() && Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
         binding.secondClockLayout.isVisible = show
         binding.localClockLabel.isVisible = show
-        // Side by side, both clocks shrink a little to fit the screen width
-        val timeSize = resources.getDimension(R.dimen.time_size) * if (show) 0.8f else 1f
+        binding.localDate.isVisible = show
+        if (!show) {
+            binding.clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.time_size))
+            return false
+        }
+        binding.root.post { fitClocks() }
+        binding.secondClock.timeZone = zone
+        binding.secondDate.timeZone = zone
+        binding.secondClockLabel.text = prefs.secondClockLabel.ifBlank { timeZoneCity(zone) }
+        return true
+    }
+
+    /**
+     * Side by side, both clocks share the row beside the screen time. They are sized for the widest
+     * time, like 12:59, so they never overflow and keep their size as the time changes.
+     */
+    private fun fitClocks() {
+        val binding = _binding ?: return
+        if (!binding.secondClockLayout.isVisible || binding.dateTimeLayout.width == 0) return
+        val reserved = if (binding.tvScreenTime.isVisible) binding.tvScreenTime.width else 0
+        val gap = (binding.secondClockLayout.layoutParams as ViewGroup.MarginLayoutParams).marginStart
+        val available = binding.dateTimeLayout.width - binding.dateTimeLayout.paddingStart -
+                binding.dateTimeLayout.paddingEnd - reserved - gap
+        val widest = if (DateFormat.is24HourFormat(requireContext())) "23:59" else "12:59"
+        val paint = Paint(binding.clock.paint).apply { textSize = 100f }
+        val fitting = 100f * (available / 2f) / paint.measureText(widest)
+        val timeSize = minOf(resources.getDimension(R.dimen.time_size) * 0.8f, fitting)
+        if (binding.clock.textSize == timeSize) return
         binding.clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, timeSize)
         binding.secondClock.setTextSize(TypedValue.COMPLEX_UNIT_PX, timeSize)
-        if (!show) return
-        val label = prefs.secondClockLabel
-        binding.secondClock.timeZone = zone
-        binding.secondClockLabel.timeZone = zone
-        binding.secondClockLabel.format12Hour = secondClockLabelFormat(zone, label, is24Hour = false)
-        binding.secondClockLabel.format24Hour = secondClockLabelFormat(zone, label, is24Hour = true)
     }
 
     private fun populateWeatherWidget() {

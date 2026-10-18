@@ -51,13 +51,3 @@ private fun gmtOffset(offsetMillis: Int): String {
     return if (minutes % 60 == 0) "GMT$sign${minutes / 60}"
     else "GMT$sign${minutes / 60}:%02d".format(minutes % 60)
 }
-
-/**
- * Label under the second clock, a TextClock pattern like "'Kochi' · EEE a" for "Kochi · Sun a.m.",
- * with [label] or else the zone's city. The weekday shows when it is already tomorrow or still
- * yesterday there, a.m./p.m. only for 12-hour time. Quotes are doubled to stay literal.
- */
-fun secondClockLabelFormat(id: String, label: String, is24Hour: Boolean): String {
-    val name = label.ifBlank { timeZoneCity(id) }.replace("'", "''")
-    return "'$name' · EEE" + if (is24Hour) "" else " a"
-}

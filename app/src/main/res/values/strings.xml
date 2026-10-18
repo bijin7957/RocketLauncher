@@ -178,6 +178,7 @@
     <string name="weather">Weather</string>
     <string name="choose_widget">Choose a weather widget</string>
     <string name="second_clock">Second clock</string>
+    <string name="local">Local</string>
     <string name="choose_time_zone">Choose a time zone</string>
     <string name="search_city">Search city or country</string>
     <string name="clock_name">Clock name</string>

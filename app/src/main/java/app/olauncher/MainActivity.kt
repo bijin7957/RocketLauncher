@@ -344,7 +344,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun backToHomeScreen() {
-        if (viewModel.isPrivateSpaceToggling) return
+        if (viewModel.isPrivateSpaceToggling || viewModel.isAddingWidget) return
         messageDialog?.dismiss()
         if (navController.currentDestination?.id != R.id.mainFragment)
             navController.popBackStack(R.id.mainFragment, false)

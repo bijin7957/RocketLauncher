@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Height is capped in code; the 8dp top margin keeps the dialog's 20dp rhythm -->
+<androidx.recyclerview.widget.RecyclerView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widgetChoices"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:fadingEdgeLength="24dp"
+    android:requiresFadingEdge="vertical" />

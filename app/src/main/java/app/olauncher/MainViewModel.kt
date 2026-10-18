@@ -71,6 +71,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Suppress backToHomeScreen during Private Space lock/unlock auth
     var isPrivateSpaceToggling = false
 
+    // Keeps Settings open while the system's widget permission and setup screens are shown
+    var isAddingWidget = false
+
     val showDialog = SingleLiveEvent<String>()
     val checkForMessages = SingleLiveEvent<Unit?>()
     val resetLauncherLiveData = SingleLiveEvent<Unit?>()
@@ -485,7 +488,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Loads cached weather, then refetches it when stale or when [force] is set. */
     fun refreshWeather(force: Boolean = false) {
-        if (prefs.weatherUnit == Constants.Weather.OFF) {
+        if (!Constants.Weather.isText(prefs.weatherUnit)) {
             weather.value = null
             return
         }
@@ -535,7 +538,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             prefs.weatherLatitude = point.latitude.toFloat()
             prefs.weatherLongitude = point.longitude.toFloat()
-            if (prefs.weatherUnit != Constants.Weather.OFF) fetchAndStoreWeather(point)
+            if (Constants.Weather.isText(prefs.weatherUnit)) fetchAndStoreWeather(point)
         }
     }
 

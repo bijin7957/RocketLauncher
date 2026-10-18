@@ -66,6 +66,14 @@
             android:visibility="gone"
             tools:text="18° Partly cloudy"
             tools:visibility="visible" />
+
+        <!-- App widget picked in Settings > Weather, shown instead of the line above -->
+        <FrameLayout
+            android:id="@+id/weatherWidget"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Screen time-->

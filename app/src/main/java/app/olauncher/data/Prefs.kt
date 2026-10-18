@@ -51,6 +51,7 @@ class Prefs(context: Context) {
     private val WEATHER_CODE = "WEATHER_CODE"
     private val WEATHER_IS_DAY = "WEATHER_IS_DAY"
     private val WEATHER_LAST_UPDATED = "WEATHER_LAST_UPDATED"
+    private val WEATHER_WIDGET_ID = "WEATHER_WIDGET_ID"
     // Home button for recents feature disabled
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
@@ -259,6 +260,11 @@ class Prefs(context: Context) {
     var weatherIsDay: Boolean
         get() = prefs.getBoolean(WEATHER_IS_DAY, true)
         set(value) = prefs.edit { putBoolean(WEATHER_IS_DAY, value).apply() }
+
+    // AppWidgetManager.INVALID_APPWIDGET_ID (0) when no widget is hosted
+    var weatherWidgetId: Int
+        get() = prefs.getInt(WEATHER_WIDGET_ID, 0)
+        set(value) = prefs.edit { putInt(WEATHER_WIDGET_ID, value).apply() }
 
     var weatherLastUpdated: Long
         get() = prefs.getLong(WEATHER_LAST_UPDATED, 0L)

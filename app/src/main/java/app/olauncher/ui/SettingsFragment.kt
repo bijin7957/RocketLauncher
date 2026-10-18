@@ -1,7 +1,9 @@
 package app.olauncher.ui
 
-import android.Manifest
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -14,8 +16,6 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
@@ -23,33 +23,37 @@ import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.LinearLayoutManager
 import app.olauncher.BuildConfig
 import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogTextSizeBinding
-import app.olauncher.databinding.DialogWeatherCityBinding
+import app.olauncher.databinding.DialogWidgetPickerBinding
 import app.olauncher.databinding.FragmentSettingsBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.createDialog
+import app.olauncher.helper.dpToPx
 import app.olauncher.helper.getColorFromAttr
-import app.olauncher.helper.hasLocationPermission
 import app.olauncher.helper.hideStatusBar
 import app.olauncher.helper.isAccessServiceEnabled
 import app.olauncher.helper.isDarkThemeOn
 import app.olauncher.helper.isEinkDisplay
 import app.olauncher.helper.isOlauncherDefault
 import app.olauncher.helper.isTablet
+import app.olauncher.helper.needsConfiguration
+import app.olauncher.helper.OlDialog
 import app.olauncher.helper.openAppInfo
 import app.olauncher.helper.openUrl
 import app.olauncher.helper.rateApp
 import app.olauncher.helper.setPlainWallpaper
 import app.olauncher.helper.shareApp
-import app.olauncher.helper.OlDialog
 import app.olauncher.helper.showPopupMenu
 import app.olauncher.helper.showStatusBar
 import app.olauncher.helper.showToast
+import app.olauncher.helper.weatherWidgetHost
+import app.olauncher.helper.widgetChoices
 import app.olauncher.listener.DeviceAdmin
 
 class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListener {
@@ -64,10 +68,18 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     private val showPentastic = System.currentTimeMillis() % 2 == 0L
     private var dialog: OlDialog? = null
 
-    private val locationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) viewModel.refreshWeather(force = true)
-            else requireContext().showToast(getString(R.string.weather_location_needed), Toast.LENGTH_LONG)
+    // Weather widget being added, kept until the bind and configure steps finish
+    private var pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+    private var pendingWidgetInfo: AppWidgetProviderInfo? = null
+
+    private val bindWidgetLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) configurePendingWidget() else cancelPendingWidget()
+        }
+
+    private val configureWidgetLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) savePendingWidget() else cancelPendingWidget()
         }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -129,8 +141,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.alignment -> showAlignmentMenu(view)
             R.id.statusBar -> toggleStatusBar()
             R.id.dateTime -> showDateTimeMenu(view)
-            R.id.weatherUnit -> showWeatherUnitMenu(view)
-            R.id.weatherCity -> showWeatherCityDialog()
+            R.id.weatherWidget -> showWidgetPicker()
             R.id.alphabetScroller -> toggleAlphabetScroller()
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = false)
             R.id.textSizeValue -> showTextSizeDialog()
@@ -195,8 +206,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.alignment.setOnClickListener(this)
         binding.statusBar.setOnClickListener(this)
         binding.dateTime.setOnClickListener(this)
-        binding.weatherUnit.setOnClickListener(this)
-        binding.weatherCity.setOnClickListener(this)
+        binding.weatherWidget.setOnClickListener(this)
         binding.alphabetScroller.setOnClickListener(this)
         binding.swipeLeftApp.setOnClickListener(this)
         binding.swipeRightApp.setOnClickListener(this)
@@ -236,9 +246,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         viewModel.updateSwipeApps.observe(viewLifecycleOwner) {
             populateSwipeApps()
         }
-        viewModel.weatherCityNotFound.observe(viewLifecycleOwner) {
-            requireContext().showToast(getString(R.string.weather_city_not_found))
-        }
     }
 
     // Popup menus
@@ -259,16 +266,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
                 R.id.dateOnly -> toggleDateTime(Constants.DateTime.DATE_ONLY)
             }
         }
-    }
-
-    private fun showWeatherUnitMenu(anchor: View) {
-        anchor.showPopupMenu(
-            configure = { menu ->
-                menu.add(Menu.NONE, Constants.Weather.OFF, 0, R.string.off)
-                menu.add(Menu.NONE, Constants.Weather.CELSIUS, 1, R.string.celsius)
-                menu.add(Menu.NONE, Constants.Weather.FAHRENHEIT, 2, R.string.fahrenheit)
-            }
-        ) { item -> updateWeatherUnit(item.itemId) }
     }
 
     private fun showAlignmentMenu(anchor: View) {
@@ -309,35 +306,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         dialog?.dismiss()
         dialog = newDialog
         newDialog.showRespectingStatusBar()
-    }
-
-    private fun showWeatherCityDialog() {
-        var cityInput: EditText? = null
-        val dialog = requireContext().createDialog(
-            title = R.string.weather_location,
-            action = R.string.save,
-            onAction = { saveWeatherCity(cityInput?.text?.toString().orEmpty()) },
-        ) { container ->
-            DialogWeatherCityBinding.inflate(layoutInflater, container, false).root.also {
-                it.setText(prefs.weatherCity)
-                it.setSelection(it.length())
-                cityInput = it
-            }
-        }
-        cityInput?.setOnEditorActionListener { view, actionId, _ ->
-            if (actionId != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
-            saveWeatherCity(view.text.toString())
-            dialog.dismiss()
-            true
-        }
-        showDialog(dialog)
-    }
-
-    private fun saveWeatherCity(city: String) {
-        if (city.trim() == prefs.weatherCity) return
-        viewModel.setWeatherCity(city)
-        populateWeather()
-        if (city.isBlank()) requestLocationIfNeeded()
     }
 
     private fun showTextSizeDialog() {
@@ -412,35 +380,128 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         viewModel.toggleDateTime()
     }
 
-    private fun updateWeatherUnit(unit: Int) {
-        val wasOff = prefs.weatherUnit == Constants.Weather.OFF
-        prefs.weatherUnit = unit
-        populateWeather()
-        viewModel.toggleDateTime()
-        if (unit == Constants.Weather.OFF) {
-            viewModel.refreshWeather()
-            return
-        }
-        if (wasOff) requestLocationIfNeeded()
-        viewModel.refreshWeather(force = wasOff)
-    }
-
-    private fun requestLocationIfNeeded() {
-        if (prefs.weatherUnit == Constants.Weather.OFF || prefs.weatherCity.isNotBlank()) return
-        if (requireContext().hasLocationPermission()) return
-        locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+    // False too when the saved widget is gone, e.g. its app was uninstalled
+    private fun hasWeatherWidget(): Boolean {
+        val widgetId = prefs.weatherWidgetId
+        return widgetId != AppWidgetManager.INVALID_APPWIDGET_ID &&
+                AppWidgetManager.getInstance(requireContext()).getAppWidgetInfo(widgetId) != null
     }
 
     private fun populateWeather() {
-        binding.weatherUnit.text = getString(
-            when (prefs.weatherUnit) {
-                Constants.Weather.CELSIUS -> R.string.celsius
-                Constants.Weather.FAHRENHEIT -> R.string.fahrenheit
-                else -> R.string.off
-            }
+        binding.weatherWidget.text = getString(if (hasWeatherWidget()) R.string.on else R.string.off)
+    }
+
+    private fun showWidgetPicker() {
+        val choices = requireContext().widgetChoices()
+        if (choices.isEmpty()) {
+            requireContext().showToast(R.string.no_widgets)
+            return
+        }
+        lateinit var picker: OlDialog
+        picker = requireContext().createDialog(
+            title = R.string.choose_widget,
+            action = R.string.close,
+            neutral = if (hasWeatherWidget()) R.string.remove else 0,
+            onNeutral = { removeWeatherWidget() },
+        ) { container ->
+            DialogWidgetPickerBinding.inflate(layoutInflater, container, false).apply {
+                widgetChoices.layoutManager = LinearLayoutManager(requireContext())
+                widgetChoices.adapter = WidgetPickerAdapter(choices) { choice ->
+                    picker.dismiss()
+                    addWeatherWidget(choice.info)
+                }
+                // Long lists scroll inside the dialog instead of pushing its buttons off screen
+                if (choices.size > 3) root.layoutParams.height = 420.dpToPx()
+            }.root
+        }
+        showDialog(picker)
+    }
+
+    private fun addWeatherWidget(info: AppWidgetProviderInfo) {
+        cancelPendingWidget(showMessage = false)
+        val widgetId = requireContext().weatherWidgetHost().allocateAppWidgetId()
+        pendingWidgetId = widgetId
+        pendingWidgetInfo = info
+        if (AppWidgetManager.getInstance(requireContext()).bindAppWidgetIdIfAllowed(widgetId, info.provider)) {
+            configurePendingWidget()
+            return
+        }
+        // First time for this launcher: the system asks the user to allow it to host widgets
+        viewModel.isAddingWidget = true
+        bindWidgetLauncher.launch(
+            Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
         )
-        binding.weatherCityLayout.isVisible = prefs.weatherUnit != Constants.Weather.OFF
-        binding.weatherCity.text = prefs.weatherCity.ifBlank { getString(R.string.weather_current_location) }
+    }
+
+    private fun configurePendingWidget() {
+        val info = pendingWidgetInfo ?: return
+        if (!info.needsConfiguration()) {
+            savePendingWidget()
+            return
+        }
+        try {
+            viewModel.isAddingWidget = true
+            configureWidgetLauncher.launch(
+                Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE)
+                    .setComponent(info.configure)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidgetId)
+            )
+        } catch (e: Exception) {
+            // Configure screens not exported to other apps can only be started through the host,
+            // which reports back to the activity, so keep the widget without waiting for a result
+            runCatching {
+                requireContext().weatherWidgetHost().startAppWidgetConfigureActivityForResult(
+                    requireActivity(), pendingWidgetId, 0, 0, null
+                )
+            }
+            savePendingWidget()
+        }
+    }
+
+    private fun savePendingWidget() {
+        viewModel.isAddingWidget = false
+        val widgetId = pendingWidgetId
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        pendingWidgetInfo = null
+        val oldWidgetId = prefs.weatherWidgetId
+        prefs.weatherWidgetId = widgetId
+        if (oldWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && oldWidgetId != widgetId)
+            requireContext().weatherWidgetHost().deleteAppWidgetId(oldWidgetId)
+        deleteStaleWidgets()
+        populateWeather()
+        viewModel.toggleDateTime()
+    }
+
+    private fun cancelPendingWidget(showMessage: Boolean = true) {
+        viewModel.isAddingWidget = false
+        if (pendingWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        requireContext().weatherWidgetHost().deleteAppWidgetId(pendingWidgetId)
+        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        pendingWidgetInfo = null
+        if (showMessage) requireContext().showToast(R.string.widget_not_added)
+    }
+
+    private fun removeWeatherWidget() {
+        val widgetId = prefs.weatherWidgetId
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        requireContext().weatherWidgetHost().deleteAppWidgetId(widgetId)
+        prefs.weatherWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        deleteStaleWidgets()
+        populateWeather()
+        viewModel.toggleDateTime()
+    }
+
+    // Frees widgets left behind by an add that was interrupted, e.g. by the app being killed.
+    // Keeps the saved widget and one still being added.
+    private fun deleteStaleWidgets() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val host = requireContext().weatherWidgetHost()
+        host.appWidgetIds
+            .filter { it != prefs.weatherWidgetId && it != pendingWidgetId }
+            .forEach { host.deleteAppWidgetId(it) }
     }
 
     private fun toggleAlphabetScroller() {

@@ -1,6 +1,9 @@
 package app.olauncher.ui
 
 import android.app.admin.DevicePolicyManager
+import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetHostView
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
@@ -8,6 +11,7 @@ import android.content.res.Configuration
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.util.SizeF
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -35,7 +39,7 @@ import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
-import app.olauncher.helper.formatWeather
+import app.olauncher.helper.weatherWidgetHost
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
 import app.olauncher.helper.isPackageInstalled
@@ -59,6 +63,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private var _binding: FragmentHomeBinding? = null
     private var homeAppsPaddingTop = -1
+    private var widgetHost: AppWidgetHost? = null
     // Added only while the letter apps show: the activity re-registers its own callback on every
     // start, so one tied to this fragment's lifecycle would end up behind it
     private val letterAppsBackCallback = object : OnBackPressedCallback(true) {
@@ -85,6 +90,17 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         initSwipeTouchListener()
         initClickListeners()
         initAlphabetScroller()
+        widgetHost = requireContext().weatherWidgetHost()
+        // The weather widget can change height after it loads, so re-fit the home apps
+        binding.dateTimeLayout.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) binding.root.post { updateHomeAppsPadding() }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Fails if the widget service is unavailable, the widget then simply doesn't update
+        runCatching { widgetHost?.startListening() }
     }
 
     override fun onResume() {
@@ -98,6 +114,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     override fun onStop() {
         // Come back to the home apps, not a stale letter, after launching an app
         hideLetterApps()
+        runCatching { widgetHost?.stopListening() }
         super.onStop()
     }
 
@@ -108,7 +125,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             // R.id.recents -> {}
             R.id.clock -> openClockApp()
             R.id.date -> openCalendarApp()
-            R.id.weather -> viewModel.refreshWeather(force = true)
             R.id.setDefaultLauncher -> viewModel.resetLauncherLiveData.call()
             R.id.tvScreenTime -> openScreenTimeDigitalWellbeing()
 
@@ -217,9 +233,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         viewModel.toggleDateTime.observe(viewLifecycleOwner) {
             populateDateTime()
         }
-        viewModel.weather.observe(viewLifecycleOwner) {
-            populateWeather()
-        }
         viewModel.screenTimeValue.observe(viewLifecycleOwner) {
             it?.let { binding.tvScreenTime.text = it }
         }
@@ -250,7 +263,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.setOnClickListener(this)
         binding.clock.setOnLongClickListener(this)
         binding.date.setOnLongClickListener(this)
-        binding.weather.setOnClickListener(this)
         binding.setDefaultLauncher.setOnClickListener(this)
         binding.setDefaultLauncher.setOnLongClickListener(this)
         binding.tvScreenTime.setOnClickListener(this)
@@ -295,7 +307,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun populateDateTime() {
         binding.dateTimeLayout.isVisible = prefs.dateTimeVisibility != Constants.DateTime.OFF
-                || prefs.weatherUnit != Constants.Weather.OFF
+                || prefs.weatherWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID
         binding.clock.isVisible = Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
         binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility)
 
@@ -312,17 +324,50 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.text = dateText.replace(".,", ",")
     }
 
-    private fun populateWeather() {
-        val weather = viewModel.weather.value
-        val showWeather = prefs.weatherUnit != Constants.Weather.OFF && weather != null
-        binding.weather.isVisible = showWeather
-        if (weather != null) binding.weather.text = requireContext().formatWeather(weather, prefs.weatherUnit)
-        // Keep the extra line clear of the home apps below
+    private fun populateWeatherWidget() {
+        val container = binding.weatherWidget
+        val widgetId = prefs.weatherWidgetId
+        val info = if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID)
+            AppWidgetManager.getInstance(requireContext()).getAppWidgetInfo(widgetId)
+        else null
+        if (info == null) {
+            container.removeAllViews()
+            container.isVisible = false
+            return
+        }
+        container.isVisible = true
+        if ((container.getChildAt(0) as? AppWidgetHostView)?.appWidgetId == widgetId) return
+
+        container.removeAllViews()
+        // The app context, not the activity: AppCompat's inflater swaps in views widgets can't drive
+        val hostView = widgetHost?.createView(requireContext().applicationContext, widgetId, info) ?: return
+        val height = info.minHeight.coerceAtLeast(64.dpToPx())
+        container.addView(hostView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, height))
+        hostView.post { updateWidgetSize(hostView, height) }
+    }
+
+    // Tells the widget the space it has, so it picks its matching layout
+    private fun updateWidgetSize(hostView: AppWidgetHostView, height: Int) {
+        val density = resources.displayMetrics.density
+        val widthDp = hostView.width / density
+        val heightDp = height / density
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            hostView.updateAppWidgetSize(Bundle(), listOf(SizeF(widthDp, heightDp)))
+        else @Suppress("DEPRECATION")
+            hostView.updateAppWidgetSize(null, widthDp.toInt(), heightDp.toInt(), widthDp.toInt(), heightDp.toInt())
+    }
+
+    // Moves the home apps down by the height the weather widget adds under the date
+    private fun updateHomeAppsPadding() {
+        val binding = _binding ?: return
         if (homeAppsPaddingTop < 0) homeAppsPaddingTop = binding.homeAppsLayout.paddingTop
+        var extra = 0
         val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-        binding.homeAppsLayout.updatePadding(
-            top = homeAppsPaddingTop + if (showWeather && isPortrait) 28.dpToPx() else 0
-        )
+        if (isPortrait && binding.dateTimeLayout.isVisible) {
+            if (binding.weatherWidget.isVisible) extra += binding.weatherWidget.height + 8.dpToPx()
+        }
+        val top = homeAppsPaddingTop + extra
+        if (binding.homeAppsLayout.paddingTop != top) binding.homeAppsLayout.updatePadding(top = top)
     }
 
     private fun initAlphabetScroller() {
@@ -410,8 +455,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private fun populateHomeScreen(appCountUpdated: Boolean) {
         if (appCountUpdated) hideHomeApps()
         populateDateTime()
-        populateWeather()
-        viewModel.refreshWeather()
+        populateWeatherWidget()
+        updateHomeAppsPadding()
         updateAlphabetScroller()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
@@ -819,6 +864,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     override fun onDestroyView() {
         super.onDestroyView()
+        widgetHost = null
         letterAppsBackCallback.remove()
         _binding = null
     }

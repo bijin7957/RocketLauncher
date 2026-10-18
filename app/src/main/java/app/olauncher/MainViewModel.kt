@@ -22,12 +22,7 @@ import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.helper.SingleLiveEvent
 import app.olauncher.helper.WallpaperWorker
-import app.olauncher.helper.GeoPoint
-import app.olauncher.helper.WeatherInfo
-import app.olauncher.helper.fetchCurrentWeather
 import app.olauncher.helper.formattedTimeSpent
-import app.olauncher.helper.geocodeCity
-import app.olauncher.helper.getDeviceLocation
 import app.olauncher.helper.getAppsList
 import app.olauncher.helper.getPrivateSpaceApps
 import app.olauncher.helper.getPrivateSpaceUserHandle
@@ -60,9 +55,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val homeAppAlignment = MutableLiveData<Int>()
     val screenTimeValue = MutableLiveData<String>()
     private var screenTimeJob: Job? = null
-    val weather = MutableLiveData<WeatherInfo?>()
-    private var weatherJob: Job? = null
-    val weatherCityNotFound = SingleLiveEvent<Unit?>()
 
     val privateSpaceApps = MutableLiveData<List<AppModel>?>()
     val privateSpaceLocked = MutableLiveData<Boolean>()
@@ -70,6 +62,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Suppress backToHomeScreen during Private Space lock/unlock auth
     var isPrivateSpaceToggling = false
+
+    // Keeps Settings open while the system's widget permission and setup screens are shown
+    var isAddingWidget = false
 
     val showDialog = SingleLiveEvent<String>()
     val checkForMessages = SingleLiveEvent<Unit?>()
@@ -481,71 +476,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             screenTimeValue.value = appContext.formattedTimeSpent(timeSpent)
             prefs.screenTimeLastUpdated = endTime
         }
-    }
-
-    /** Loads cached weather, then refetches it when stale or when [force] is set. */
-    fun refreshWeather(force: Boolean = false) {
-        if (prefs.weatherUnit == Constants.Weather.OFF) {
-            weather.value = null
-            return
-        }
-        if (weather.value == null && prefs.weatherTemperature.isNaN().not())
-            weather.value = WeatherInfo(prefs.weatherTemperature, prefs.weatherCode, prefs.weatherIsDay)
-        if (!force && weather.value != null && prefs.weatherLastUpdated.hasBeenMinutes(Constants.Weather.REFRESH_MINUTES).not())
-            return
-        if (weatherJob?.isActive == true) {
-            if (!force) return
-            weatherJob?.cancel()
-        }
-
-        weatherJob = viewModelScope.launch {
-            val point = when {
-                prefs.weatherCity.isBlank() -> appContext.getDeviceLocation()
-                prefs.weatherLatitude.isNaN() || prefs.weatherLongitude.isNaN() ->
-                    geocodeCity(prefs.weatherCity)?.also {
-                        prefs.weatherLatitude = it.latitude.toFloat()
-                        prefs.weatherLongitude = it.longitude.toFloat()
-                    }
-
-                else -> GeoPoint(prefs.weatherLatitude.toDouble(), prefs.weatherLongitude.toDouble())
-            }
-            if (point != null) fetchAndStoreWeather(point)
-        }
-    }
-
-    /** Saves a new weather city, blank for device location, and loads its weather. */
-    fun setWeatherCity(city: String) {
-        prefs.weatherCity = city.trim()
-        prefs.weatherLatitude = Float.NaN
-        prefs.weatherLongitude = Float.NaN
-        prefs.weatherTemperature = Float.NaN
-        prefs.weatherLastUpdated = 0L
-        weather.value = null
-        weatherJob?.cancel()
-        if (prefs.weatherCity.isBlank()) {
-            refreshWeather(force = true)
-            return
-        }
-
-        weatherJob = viewModelScope.launch {
-            val point = geocodeCity(prefs.weatherCity)
-            if (point == null) {
-                weatherCityNotFound.call()
-                return@launch
-            }
-            prefs.weatherLatitude = point.latitude.toFloat()
-            prefs.weatherLongitude = point.longitude.toFloat()
-            if (prefs.weatherUnit != Constants.Weather.OFF) fetchAndStoreWeather(point)
-        }
-    }
-
-    private suspend fun fetchAndStoreWeather(point: GeoPoint) {
-        val result = fetchCurrentWeather(point) ?: return
-        prefs.weatherTemperature = result.temperatureCelsius
-        prefs.weatherCode = result.code
-        prefs.weatherIsDay = result.isDay
-        prefs.weatherLastUpdated = System.currentTimeMillis()
-        weather.value = result
     }
 
     fun getPrivateSpaceAppList() {

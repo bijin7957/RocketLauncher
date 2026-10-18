@@ -39,6 +39,8 @@ import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
+import app.olauncher.helper.WeatherWidgetHostView
+import app.olauncher.helper.secondClockFormat
 import app.olauncher.helper.weatherWidgetHost
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
@@ -123,7 +125,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             R.id.lock -> {}
             // Home button for recents feature disabled
             // R.id.recents -> {}
-            R.id.clock -> openClockApp()
+            R.id.clock, R.id.secondClock -> openClockApp()
             R.id.date -> openCalendarApp()
             R.id.setDefaultLauncher -> viewModel.resetLauncherLiveData.call()
             R.id.tvScreenTime -> openScreenTimeDigitalWellbeing()
@@ -260,6 +262,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         // Home button for recents feature disabled
         // binding.recents.setOnClickListener(this)
         binding.clock.setOnClickListener(this)
+        binding.secondClock.setOnClickListener(this)
         binding.date.setOnClickListener(this)
         binding.clock.setOnLongClickListener(this)
         binding.date.setOnLongClickListener(this)
@@ -310,6 +313,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 || prefs.weatherWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID
         binding.clock.isVisible = Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
         binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility)
+        populateSecondClock()
 
 //        var dateText = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date())
         val dateFormat = SimpleDateFormat("EEE, d MMM", Locale.getDefault())
@@ -324,6 +328,15 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.text = dateText.replace(".,", ",")
     }
 
+    private fun populateSecondClock() {
+        val zone = prefs.secondTimeZone
+        binding.secondClock.isVisible = zone.isNotBlank() && prefs.dateTimeVisibility != Constants.DateTime.OFF
+        if (zone.isBlank()) return
+        binding.secondClock.timeZone = zone
+        binding.secondClock.format12Hour = secondClockFormat(zone, is24Hour = false)
+        binding.secondClock.format24Hour = secondClockFormat(zone, is24Hour = true)
+    }
+
     private fun populateWeatherWidget() {
         val container = binding.weatherWidget
         val widgetId = prefs.weatherWidgetId
@@ -336,11 +349,16 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             return
         }
         container.isVisible = true
-        if ((container.getChildAt(0) as? AppWidgetHostView)?.appWidgetId == widgetId) return
+        val current = container.getChildAt(0) as? WeatherWidgetHostView
+        if (current?.appWidgetId == widgetId) {
+            // Turning transparency off needs a fresh view to get the backgrounds back
+            if (current.transparent == prefs.weatherTransparent) return
+        }
 
         container.removeAllViews()
         // The app context, not the activity: AppCompat's inflater swaps in views widgets can't drive
         val hostView = widgetHost?.createView(requireContext().applicationContext, widgetId, info) ?: return
+        (hostView as? WeatherWidgetHostView)?.transparent = prefs.weatherTransparent
         val height = info.minHeight.coerceAtLeast(64.dpToPx())
         container.addView(hostView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, height))
         hostView.post { updateWidgetSize(hostView, height) }
@@ -357,7 +375,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             hostView.updateAppWidgetSize(null, widthDp.toInt(), heightDp.toInt(), widthDp.toInt(), heightDp.toInt())
     }
 
-    // Moves the home apps down by the height the weather widget adds under the date
+    // Moves the home apps down by the height the second clock and weather widget add under the date
     private fun updateHomeAppsPadding() {
         val binding = _binding ?: return
         if (homeAppsPaddingTop < 0) homeAppsPaddingTop = binding.homeAppsLayout.paddingTop
@@ -365,6 +383,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         if (isPortrait && binding.dateTimeLayout.isVisible) {
             if (binding.weatherWidget.isVisible) extra += binding.weatherWidget.height + 8.dpToPx()
+            if (binding.secondClock.isVisible) extra += binding.secondClock.height + 2.dpToPx()
         }
         val top = homeAppsPaddingTop + extra
         if (binding.homeAppsLayout.paddingTop != top) binding.homeAppsLayout.updatePadding(top = top)

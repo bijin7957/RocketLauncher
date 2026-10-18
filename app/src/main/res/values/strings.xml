@@ -177,6 +177,12 @@
     <string name="alphabet_scroller">Alphabet scroller</string>
     <string name="weather">Weather</string>
     <string name="choose_widget">Choose a weather widget</string>
+    <string name="second_clock">Second clock</string>
+    <string name="choose_time_zone">Choose a time zone</string>
+    <string name="search_city">Search city</string>
+    <string name="weather_background">Weather background</string>
+    <string name="transparent">Transparent</string>
+    <string name="original">Original</string>
     <string name="no_widgets">No weather widgets installed</string>
     <string name="widget_not_added">Widget not added</string>
     <string name="remove">Remove</string>

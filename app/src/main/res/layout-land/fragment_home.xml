@@ -56,6 +56,19 @@
             android:textSize="@dimen/date_size"
             tools:text="Thu, 30 Dec" />
 
+        <!-- Second time zone, picked in Settings > Second clock -->
+        <TextClock
+            android:id="@+id/secondClock"
+            style="@style/TextDefault"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:paddingHorizontal="3dp"
+            android:textSize="@dimen/date_size"
+            android:visibility="gone"
+            tools:text="Kolkata · Sun 7:05 AM"
+            tools:visibility="visible" />
+
         <!-- App widget picked in Settings > Weather -->
         <FrameLayout
             android:id="@+id/weatherWidget"

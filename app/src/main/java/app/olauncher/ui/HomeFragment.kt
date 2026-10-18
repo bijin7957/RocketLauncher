@@ -16,11 +16,13 @@ import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.view.setPadding
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
@@ -33,6 +35,7 @@ import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
+import app.olauncher.helper.formatWeather
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
 import app.olauncher.helper.isPackageInstalled
@@ -55,6 +58,12 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var deviceManager: DevicePolicyManager
 
     private var _binding: FragmentHomeBinding? = null
+    private var homeAppsPaddingTop = -1
+    // Added only while the letter apps show: the activity re-registers its own callback on every
+    // start, so one tied to this fragment's lifecycle would end up behind it
+    private val letterAppsBackCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() = hideLetterApps()
+    }
     private val binding get() = _binding!!
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -75,6 +84,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         setHomeAlignment(prefs.homeAlignment)
         initSwipeTouchListener()
         initClickListeners()
+        initAlphabetScroller()
     }
 
     override fun onResume() {
@@ -85,6 +95,12 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         else hideStatusBar()
     }
 
+    override fun onStop() {
+        // Come back to the home apps, not a stale letter, after launching an app
+        hideLetterApps()
+        super.onStop()
+    }
+
     override fun onClick(view: View) {
         when (view.id) {
             R.id.lock -> {}
@@ -92,6 +108,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             // R.id.recents -> {}
             R.id.clock -> openClockApp()
             R.id.date -> openCalendarApp()
+            R.id.weather -> viewModel.refreshWeather(force = true)
             R.id.setDefaultLauncher -> viewModel.resetLauncherLiveData.call()
             R.id.tvScreenTime -> openScreenTimeDigitalWellbeing()
 
@@ -200,6 +217,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         viewModel.toggleDateTime.observe(viewLifecycleOwner) {
             populateDateTime()
         }
+        viewModel.weather.observe(viewLifecycleOwner) {
+            populateWeather()
+        }
         viewModel.screenTimeValue.observe(viewLifecycleOwner) {
             it?.let { binding.tvScreenTime.text = it }
         }
@@ -230,6 +250,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.setOnClickListener(this)
         binding.clock.setOnLongClickListener(this)
         binding.date.setOnLongClickListener(this)
+        binding.weather.setOnClickListener(this)
         binding.setDefaultLauncher.setOnClickListener(this)
         binding.setDefaultLauncher.setOnLongClickListener(this)
         binding.tvScreenTime.setOnClickListener(this)
@@ -258,6 +279,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val verticalGravity = if (prefs.homeBottomAlignment) Gravity.BOTTOM else Gravity.CENTER_VERTICAL
         binding.homeAppsLayout.gravity = horizontalGravity or verticalGravity
         binding.dateTimeLayout.gravity = horizontalGravity
+        // Letter apps hug the edge away from the index so the letter curve stays clear of them
+        binding.alphabetScroller.alignStart = horizontalGravity == Gravity.END
+        binding.letterAppsLayout.gravity = letterAppsGravity() or Gravity.CENTER_VERTICAL
+        binding.letterHeader.gravity = letterAppsGravity()
         binding.homeApp1.gravity = horizontalGravity
         binding.homeApp2.gravity = horizontalGravity
         binding.homeApp3.gravity = horizontalGravity
@@ -270,6 +295,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun populateDateTime() {
         binding.dateTimeLayout.isVisible = prefs.dateTimeVisibility != Constants.DateTime.OFF
+                || prefs.weatherUnit != Constants.Weather.OFF
         binding.clock.isVisible = Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
         binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility)
 
@@ -284,6 +310,74 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 dateText = getString(R.string.day_battery, dateText, battery)
         }
         binding.date.text = dateText.replace(".,", ",")
+    }
+
+    private fun populateWeather() {
+        val weather = viewModel.weather.value
+        val showWeather = prefs.weatherUnit != Constants.Weather.OFF && weather != null
+        binding.weather.isVisible = showWeather
+        if (weather != null) binding.weather.text = requireContext().formatWeather(weather, prefs.weatherUnit)
+        // Keep the extra line clear of the home apps below
+        if (homeAppsPaddingTop < 0) homeAppsPaddingTop = binding.homeAppsLayout.paddingTop
+        val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        binding.homeAppsLayout.updatePadding(
+            top = homeAppsPaddingTop + if (showWeather && isPortrait) 28.dpToPx() else 0
+        )
+    }
+
+    private fun initAlphabetScroller() {
+        binding.alphabetScroller.onLetterSelected = { showLetterApps(it) }
+        binding.letterAppsLayout.setOnClickListener { hideLetterApps() }
+        viewModel.appList.observe(viewLifecycleOwner) { updateAlphabetScroller() }
+    }
+
+    private fun letterApps(): List<AppModel> =
+        viewModel.appList.value.orEmpty().filter { it.appLabel.isNotBlank() }
+
+    private fun updateAlphabetScroller() {
+        val letters = letterApps().map { AlphabetScrollerView.sectionLetter(it.appLabel) }.distinct()
+        binding.alphabetScroller.setLetters(letters)
+        binding.alphabetScroller.isVisible = prefs.alphabetScroller && letters.size > 1
+        if (!binding.alphabetScroller.isVisible) hideLetterApps()
+    }
+
+    /** Shows the apps under [letter] in place of the home apps until dismissed. */
+    private fun showLetterApps(letter: String) {
+        val layout = binding.letterAppsLayout
+        layout.removeViews(1, layout.childCount - 1)
+        binding.letterHeader.text = letter
+        letterApps().filter { AlphabetScrollerView.sectionLetter(it.appLabel) == letter }.forEach { app ->
+            val item = layoutInflater.inflate(R.layout.item_letter_app, layout, false) as TextView
+            item.text = app.appLabel
+            item.gravity = letterAppsGravity()
+            item.setOnClickListener {
+                viewModel.selectedApp(app, Constants.FLAG_LAUNCH_APP)
+                hideLetterApps()
+            }
+            layout.addView(item)
+        }
+        binding.letterAppsScroll.scrollTo(0, 0)
+        binding.letterAppsScroll.isVisible = true
+        setHomeContentShown(false)
+        letterAppsBackCallback.remove()
+        requireActivity().onBackPressedDispatcher.addCallback(letterAppsBackCallback)
+    }
+
+    // Fades rather than hides, so the visibility each view gets from its own setting is kept
+    private fun setHomeContentShown(shown: Boolean) {
+        val alpha = if (shown) 1f else 0f
+        binding.homeAppsLayout.alpha = alpha
+        binding.dateTimeLayout.alpha = alpha
+        binding.tvScreenTime.alpha = alpha
+    }
+
+    private fun letterAppsGravity() = if (prefs.homeAlignment == Gravity.END) Gravity.END else Gravity.START
+
+    private fun hideLetterApps() {
+        val binding = _binding ?: return
+        binding.letterAppsScroll.isVisible = false
+        setHomeContentShown(true)
+        letterAppsBackCallback.remove()
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -316,6 +410,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private fun populateHomeScreen(appCountUpdated: Boolean) {
         if (appCountUpdated) hideHomeApps()
         populateDateTime()
+        populateWeather()
+        viewModel.refreshWeather()
+        updateAlphabetScroller()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             populateScreenTime()
@@ -722,6 +819,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     override fun onDestroyView() {
         super.onDestroyView()
+        letterAppsBackCallback.remove()
         _binding = null
     }
 }

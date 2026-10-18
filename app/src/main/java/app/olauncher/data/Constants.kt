@@ -42,16 +42,7 @@ object Constants {
     }
 
     object Weather {
-        const val OFF = 0
-        const val CELSIUS = 1
-        const val FAHRENHEIT = 2
-        const val WIDGET = 3
-
-        const val REFRESH_MINUTES = 30
         const val WIDGET_HOST_ID = 1024
-
-        /** Whether the launcher draws the weather itself, as opposed to off or a hosted widget. */
-        fun isText(weatherUnit: Int) = weatherUnit == CELSIUS || weatherUnit == FAHRENHEIT
     }
 
     object CharacterIndicator {

@@ -168,7 +168,7 @@
                         android:textColor="?attr/primaryColor" />
 
                     <TextView
-                        android:id="@+id/weatherUnit"
+                        android:id="@+id/weatherWidget"
                         style="@style/TextSmallBold"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -179,35 +179,6 @@
                         android:ellipsize="end"
                         android:padding="8dp"
                         android:text="@string/off" />
-                </FrameLayout>
-
-                <FrameLayout
-                    android:id="@+id/weatherCityLayout"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp">
-
-                    <TextView
-                        style="@style/TextSmall"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:paddingVertical="8dp"
-                        android:text="@string/weather_location"
-                        android:textColor="?attr/primaryColor" />
-
-                    <TextView
-                        android:id="@+id/weatherCity"
-                        style="@style/TextSmallBold"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end|bottom"
-                        android:layout_marginEnd="4dp"
-                        android:maxWidth="180dp"
-                        android:maxLines="1"
-                        android:ellipsize="end"
-                        android:padding="8dp"
-                        android:text="@string/weather_current_location" />
                 </FrameLayout>
 
                 <FrameLayout

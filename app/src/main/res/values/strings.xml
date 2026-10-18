@@ -176,26 +176,8 @@
 
     <string name="alphabet_scroller">Alphabet scroller</string>
     <string name="weather">Weather</string>
-    <string name="weather_location">Weather location</string>
-    <string name="weather_current_location">Current</string>
-    <string name="weather_city_hint">City name, blank for current location</string>
-    <string name="weather_city_not_found">City not found</string>
-    <string name="weather_location_needed">Location permission denied. Set a city in settings for weather.</string>
-    <string name="celsius">°C</string>
-    <string name="fahrenheit">°F</string>
-    <string name="weather_widget">Widget</string>
-    <string name="choose_widget">Choose a widget</string>
-    <string name="no_widgets">No widgets installed</string>
+    <string name="choose_widget">Choose a weather widget</string>
+    <string name="no_widgets">No weather widgets installed</string>
     <string name="widget_not_added">Widget not added</string>
-    <string name="save">Save</string>
-    <string name="weather_format">%1$d° %2$s</string>
-    <string name="weather_clear">Clear</string>
-    <string name="weather_partly_cloudy">Partly cloudy</string>
-    <string name="weather_cloudy">Cloudy</string>
-    <string name="weather_fog">Fog</string>
-    <string name="weather_drizzle">Drizzle</string>
-    <string name="weather_rain">Rain</string>
-    <string name="weather_snow">Snow</string>
-    <string name="weather_thunderstorm">Thunderstorm</string>
-    <string name="weather_unknown">—</string>
+    <string name="remove">Remove</string>
 </resources>

@@ -39,7 +39,6 @@ import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
-import app.olauncher.helper.formatWeather
 import app.olauncher.helper.weatherWidgetHost
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
@@ -92,7 +91,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         initClickListeners()
         initAlphabetScroller()
         widgetHost = requireContext().weatherWidgetHost()
-        // The weather line or widget can change height after they load, so re-fit the home apps
+        // The weather widget can change height after it loads, so re-fit the home apps
         binding.dateTimeLayout.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             if (bottom - top != oldBottom - oldTop) binding.root.post { updateHomeAppsPadding() }
         }
@@ -126,7 +125,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             // R.id.recents -> {}
             R.id.clock -> openClockApp()
             R.id.date -> openCalendarApp()
-            R.id.weather -> viewModel.refreshWeather(force = true)
             R.id.setDefaultLauncher -> viewModel.resetLauncherLiveData.call()
             R.id.tvScreenTime -> openScreenTimeDigitalWellbeing()
 
@@ -235,9 +233,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         viewModel.toggleDateTime.observe(viewLifecycleOwner) {
             populateDateTime()
         }
-        viewModel.weather.observe(viewLifecycleOwner) {
-            populateWeather()
-        }
         viewModel.screenTimeValue.observe(viewLifecycleOwner) {
             it?.let { binding.tvScreenTime.text = it }
         }
@@ -268,7 +263,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.setOnClickListener(this)
         binding.clock.setOnLongClickListener(this)
         binding.date.setOnLongClickListener(this)
-        binding.weather.setOnClickListener(this)
         binding.setDefaultLauncher.setOnClickListener(this)
         binding.setDefaultLauncher.setOnLongClickListener(this)
         binding.tvScreenTime.setOnClickListener(this)
@@ -313,7 +307,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun populateDateTime() {
         binding.dateTimeLayout.isVisible = prefs.dateTimeVisibility != Constants.DateTime.OFF
-                || prefs.weatherUnit != Constants.Weather.OFF
+                || prefs.weatherWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID
         binding.clock.isVisible = Constants.DateTime.isTimeVisible(prefs.dateTimeVisibility)
         binding.date.isVisible = Constants.DateTime.isDateVisible(prefs.dateTimeVisibility)
 
@@ -330,19 +324,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.date.text = dateText.replace(".,", ",")
     }
 
-    private fun populateWeather() {
-        val weather = viewModel.weather.value
-        val showWeather = Constants.Weather.isText(prefs.weatherUnit) && weather != null
-        binding.weather.isVisible = showWeather
-        if (weather != null) binding.weather.text = requireContext().formatWeather(weather, prefs.weatherUnit)
-        populateWeatherWidget()
-        updateHomeAppsPadding()
-    }
-
     private fun populateWeatherWidget() {
         val container = binding.weatherWidget
         val widgetId = prefs.weatherWidgetId
-        val info = if (prefs.weatherUnit == Constants.Weather.WIDGET && widgetId != AppWidgetManager.INVALID_APPWIDGET_ID)
+        val info = if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID)
             AppWidgetManager.getInstance(requireContext()).getAppWidgetInfo(widgetId)
         else null
         if (info == null) {
@@ -372,14 +357,13 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             hostView.updateAppWidgetSize(null, widthDp.toInt(), heightDp.toInt(), widthDp.toInt(), heightDp.toInt())
     }
 
-    // Moves the home apps down by whatever the weather line or widget adds under the date
+    // Moves the home apps down by the height the weather widget adds under the date
     private fun updateHomeAppsPadding() {
         val binding = _binding ?: return
         if (homeAppsPaddingTop < 0) homeAppsPaddingTop = binding.homeAppsLayout.paddingTop
         var extra = 0
         val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         if (isPortrait && binding.dateTimeLayout.isVisible) {
-            if (binding.weather.isVisible) extra += binding.weather.height + 2.dpToPx()
             if (binding.weatherWidget.isVisible) extra += binding.weatherWidget.height + 8.dpToPx()
         }
         val top = homeAppsPaddingTop + extra
@@ -471,8 +455,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private fun populateHomeScreen(appCountUpdated: Boolean) {
         if (appCountUpdated) hideHomeApps()
         populateDateTime()
-        populateWeather()
-        viewModel.refreshWeather()
+        populateWeatherWidget()
+        updateHomeAppsPadding()
         updateAlphabetScroller()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)

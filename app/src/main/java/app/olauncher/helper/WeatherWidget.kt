@@ -8,13 +8,16 @@ import android.os.Build
 import android.os.Process
 import app.olauncher.data.Constants
 
-// Hosts one app widget, picked by the user, in place of the built-in weather line
+// Hosts one weather widget, picked by the user, under the date on the home screen
 
-data class WidgetChoice(val info: AppWidgetProviderInfo, val label: String, val isWeather: Boolean)
+data class WidgetChoice(val info: AppWidgetProviderInfo, val label: String)
 
 fun Context.weatherWidgetHost() = AppWidgetHost(applicationContext, Constants.Weather.WIDGET_HOST_ID)
 
-/** Widgets installed for this profile, weather ones first, labelled "App · Widget". */
+/**
+ * Home screen weather widgets installed for this profile, labelled "App · Widget". Apps often
+ * ship several variants under one name and size, which would look identical, so those show once.
+ */
 fun Context.widgetChoices(): List<WidgetChoice> {
     val manager = AppWidgetManager.getInstance(this)
     val providers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -24,7 +27,7 @@ fun Context.widgetChoices(): List<WidgetChoice> {
     // Lock screen, cover screen and watch widgets are listed too, keep only home screen ones
     return providers.filter {
         it.widgetCategory and AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN != 0
-    }.map { info ->
+    }.mapNotNull { info ->
         val packageName = info.provider.packageName
         val appLabel = try {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
@@ -34,8 +37,9 @@ fun Context.widgetChoices(): List<WidgetChoice> {
         val widgetLabel = info.loadLabel(packageManager)?.toString().orEmpty()
         val label = if (widgetLabel.isBlank() || widgetLabel == appLabel) appLabel else "$appLabel · $widgetLabel"
         val isWeather = listOf(label, packageName).any { it.contains("weather", ignoreCase = true) }
-        WidgetChoice(info, label, isWeather)
-    }.sortedWith(compareBy({ !it.isWeather }, { it.label.lowercase() }))
+        if (isWeather) WidgetChoice(info, label) else null
+    }.distinctBy { it.label to widgetSizeLabel(it.info) }
+        .sortedBy { it.label.lowercase() }
 }
 
 /** Whether the widget must run its configuration screen before it can be shown. */

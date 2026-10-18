@@ -66,13 +66,15 @@ class OlDialog(context: Context) : AlertDialog(context) {
 
 /**
  * Builds a dialog using the app's own layout: a title row with a close icon,
- * an optional [message] or custom [content], and a text [action] at the end.
+ * an optional [message] (or [messageText] built at runtime) or custom [content], and a text
+ * [action] at the end.
  * [content] receives the container so the inflated view keeps its XML margins.
  */
 fun Context.createDialog(
     @StringRes title: Int,
     @StringRes action: Int,
     @StringRes message: Int = 0,
+    messageText: CharSequence? = null,
     @StringRes neutral: Int = 0,
     onNeutral: () -> Unit = {},
     onAction: () -> Unit = {},
@@ -84,6 +86,9 @@ fun Context.createDialog(
     binding.tvAction.setText(action)
     if (message != 0) {
         binding.tvMessage.setText(message)
+        binding.tvMessage.isVisible = true
+    } else if (messageText != null) {
+        binding.tvMessage.text = messageText
         binding.tvMessage.isVisible = true
     }
     if (neutral != 0) {

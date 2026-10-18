@@ -336,21 +336,56 @@ fun openAppInfo(context: Context, userHandle: UserHandle, packageName: String) {
         context.showToast(context.getString(R.string.unable_to_open_app_info))
 }
 
+// The wallpaper list is a gist this app doesn't control, so images only come over HTTPS from the
+// hosts it uses, with time and size limits
+private val WALLPAPER_HOSTS = setOf("images.unsplash.com", "images.pexels.com", "i.redd.it", "images2.imgbox.com")
+private const val WALLPAPER_MAX_BYTES = 20 * 1024 * 1024
+private const val NETWORK_TIMEOUT_MILLIS = 15_000
+
+private fun isAllowedWallpaperUrl(url: URL) = url.protocol == "https" && url.host in WALLPAPER_HOSTS
+
+private fun openWithTimeouts(url: URL): HttpURLConnection =
+    (url.openConnection() as HttpURLConnection).apply {
+        connectTimeout = NETWORK_TIMEOUT_MILLIS
+        readTimeout = NETWORK_TIMEOUT_MILLIS
+        // A redirect could leave the allowed hosts
+        instanceFollowRedirects = false
+    }
+
 suspend fun getBitmapFromURL(src: String?): Bitmap? {
     return withContext(Dispatchers.IO) {
         var bitmap: Bitmap? = null
         try {
             val url = URL(src)
-            val connection: HttpURLConnection = url
-                .openConnection() as HttpURLConnection
-            connection.doInput = true
-            connection.connect()
-            val input: InputStream = connection.inputStream
-            bitmap = BitmapFactory.decodeStream(input)
+            if (!isAllowedWallpaperUrl(url)) return@withContext null
+            val connection = openWithTimeouts(url)
+            try {
+                connection.doInput = true
+                connection.connect()
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+                if (connection.contentLengthLong > WALLPAPER_MAX_BYTES) return@withContext null
+                val bytes = connection.inputStream.use { it.readUpTo(WALLPAPER_MAX_BYTES) }
+                    ?: return@withContext null
+                bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } finally {
+                connection.disconnect()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         bitmap
+    }
+}
+
+// Null when the stream is longer than [limit]
+private fun InputStream.readUpTo(limit: Int): ByteArray? {
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(64 * 1024)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) return out.toByteArray()
+        if (out.size() + read > limit) return null
+        out.write(buffer, 0, read)
     }
 }
 
@@ -431,7 +466,7 @@ suspend fun getTodaysWallpaper(wallType: String, firstOpenTime: Long): String {
             }
 
             val url = URL(Constants.URL_WALLPAPERS)
-            val connection: HttpURLConnection = url.openConnection() as HttpURLConnection
+            val connection = openWithTimeouts(url)
             connection.doInput = true
             connection.connect()
 

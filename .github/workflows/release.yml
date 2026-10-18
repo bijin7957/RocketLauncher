@@ -2,6 +2,7 @@ name: Release
 
 # Pushing a tag like v1.0.0 builds the APK, signs it with the release key and publishes it as a
 # GitHub release. Tags with a suffix, like v1.1.0-beta.1, are published as pre-releases.
+# This job holds the signing key, so actions are pinned to exact commits, not movable tags.
 on:
   push:
     tags: ['v*']
@@ -13,9 +14,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v6
+      # Fails if gradle-wrapper.jar isn't an official Gradle release; it runs in every build
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: 17

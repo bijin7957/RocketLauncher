@@ -121,6 +121,13 @@
     </style>
 
     <!-- Alert dialogs: the window only; content comes from layout/dialog_base.xml -->
+    <!-- Invisible activity that only shows the confirm dialog for a pinned shortcut -->
+    <style name="PinItemTheme" parent="AppTheme">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+
     <style name="OlAlertDialog" parent="ThemeOverlay.AppCompat.Dialog.Alert">
         <item name="android:windowBackground">@drawable/bg_dialog</item>
         <item name="android:backgroundDimAmount">0.5</item>

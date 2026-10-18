@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Release builds drop debug and verbose logs; some name the apps used, from the screen time code
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}

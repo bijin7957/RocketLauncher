@@ -30,6 +30,7 @@ import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.view.setPadding
 import androidx.core.view.updatePadding
+import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
@@ -439,6 +440,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     }
 
     private fun initAlphabetScroller() {
+        // The letter heading at the top of the list already shows the picked letter
+        binding.alphabetScroller.showBubble = false
         binding.alphabetScroller.onLetterSelected = { showLetterApps(it) }
         binding.letterAppsLayout.setOnClickListener { hideLetterApps() }
         viewModel.appList.observe(viewLifecycleOwner) { updateAlphabetScroller() }
@@ -459,9 +462,14 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val layout = binding.letterAppsLayout
         layout.removeViews(1, layout.childCount - 1)
         binding.letterHeader.text = letter
+        keepLetterAppsClearOfScroller()
         letterApps().filter { AlphabetScrollerView.sectionLetter(it.appLabel) == letter }.forEach { app ->
             val item = layoutInflater.inflate(R.layout.item_letter_app, layout, false) as TextView
             item.text = app.appLabel
+            // Long names shrink to fit one line before they are cut off
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                item, minLetterAppTextSize, item.textSize.toInt(), 1, TypedValue.COMPLEX_UNIT_PX
+            )
             item.gravity = letterAppsGravity()
             item.setOnClickListener {
                 viewModel.selectedApp(app, Constants.FLAG_LAUNCH_APP)
@@ -482,6 +490,21 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.homeAppsLayout.alpha = alpha
         binding.dateTimeLayout.alpha = alpha
         binding.tvScreenTime.alpha = alpha
+    }
+
+    // Pads the list on the scroller's side so long names don't run under the curved letters
+    private fun keepLetterAppsClearOfScroller() {
+        val scroll = binding.letterAppsScroll
+        val scroller = binding.alphabetScroller
+        val toContent = if (scroller.alignStart) scroll.left + scroll.paddingLeft
+        else scroller.width - scroll.right + scroll.paddingRight
+        val pad = (scroller.reachWidth + 12.dpToPx() - toContent).coerceAtLeast(0)
+        if (scroller.alignStart) binding.letterAppsLayout.updatePadding(left = pad, right = 0)
+        else binding.letterAppsLayout.updatePadding(left = 0, right = pad)
+    }
+
+    private val minLetterAppTextSize by lazy {
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 18f, resources.displayMetrics).toInt()
     }
 
     private fun letterAppsGravity() = if (prefs.homeAlignment == Gravity.END) Gravity.END else Gravity.START

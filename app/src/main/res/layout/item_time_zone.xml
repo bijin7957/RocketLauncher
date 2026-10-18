@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:focusable="true"
+    android:orientation="vertical"
+    android:paddingVertical="10dp"
+    android:paddingEnd="8dp"
+    tools:ignore="RtlSymmetry">
+
+    <TextView
+        android:id="@+id/timeZoneCity"
+        style="@style/TextSmall"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:textColor="?attr/primaryColor"
+        tools:text="Kolkata" />
+
+    <TextView
+        android:id="@+id/timeZoneDetail"
+        style="@style/TextSmall"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:alpha="0.6"
+        android:maxLines="1"
+        android:textColor="?attr/primaryColor"
+        android:textSize="12sp"
+        tools:text="Asia · GMT+5:30" />
+</LinearLayout>

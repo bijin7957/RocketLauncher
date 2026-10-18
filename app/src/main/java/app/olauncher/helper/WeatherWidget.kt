@@ -1,18 +1,51 @@
 package app.olauncher.helper
 
 import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
 import android.os.Build
 import android.os.Process
+import android.view.View
+import android.view.ViewGroup
+import android.widget.RemoteViews
 import app.olauncher.data.Constants
 
 // Hosts one weather widget, picked by the user, under the date on the home screen
 
 data class WidgetChoice(val info: AppWidgetProviderInfo, val label: String)
 
-fun Context.weatherWidgetHost() = AppWidgetHost(applicationContext, Constants.Weather.WIDGET_HOST_ID)
+fun Context.weatherWidgetHost(): AppWidgetHost = WeatherWidgetHost(applicationContext)
+
+private class WeatherWidgetHost(context: Context) : AppWidgetHost(context, Constants.Weather.WIDGET_HOST_ID) {
+    override fun onCreateView(context: Context, appWidgetId: Int, appWidget: AppWidgetProviderInfo?): AppWidgetHostView =
+        WeatherWidgetHostView(context)
+}
+
+/**
+ * Widget view that, when [transparent], clears the backgrounds of the widget's layouts after
+ * every update, so only its text and icons show over the wallpaper.
+ */
+class WeatherWidgetHostView(context: Context) : AppWidgetHostView(context) {
+    var transparent = false
+        set(value) {
+            field = value
+            if (value) clearLayoutBackgrounds(this)
+        }
+
+    override fun updateAppWidget(remoteViews: RemoteViews?) {
+        super.updateAppWidget(remoteViews)
+        if (transparent) clearLayoutBackgrounds(this)
+    }
+
+    // Only layouts: an ImageView or TextView background is usually content, like an icon
+    private fun clearLayoutBackgrounds(view: View) {
+        if (view !is ViewGroup) return
+        view.background = null
+        for (i in 0 until view.childCount) clearLayoutBackgrounds(view.getChildAt(i))
+    }
+}
 
 /**
  * Home screen weather widgets installed for this profile, labelled "App · Widget". Apps often

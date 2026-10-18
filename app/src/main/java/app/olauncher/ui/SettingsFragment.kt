@@ -16,11 +16,14 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -30,12 +33,15 @@ import app.olauncher.R
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogTextSizeBinding
+import app.olauncher.databinding.DialogClockLabelBinding
+import app.olauncher.databinding.DialogTimeZonePickerBinding
 import app.olauncher.databinding.DialogWidgetPickerBinding
 import app.olauncher.databinding.FragmentSettingsBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.createDialog
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.getColorFromAttr
+import app.olauncher.helper.hideKeyboard
 import app.olauncher.helper.hideStatusBar
 import app.olauncher.helper.isAccessServiceEnabled
 import app.olauncher.helper.isDarkThemeOn
@@ -52,6 +58,8 @@ import app.olauncher.helper.shareApp
 import app.olauncher.helper.showPopupMenu
 import app.olauncher.helper.showStatusBar
 import app.olauncher.helper.showToast
+import app.olauncher.helper.timeZoneChoices
+import app.olauncher.helper.timeZoneCity
 import app.olauncher.helper.weatherWidgetHost
 import app.olauncher.helper.widgetChoices
 import app.olauncher.listener.DeviceAdmin
@@ -114,6 +122,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateStatusBar()
         populateDateTime()
         populateWeather()
+        populateSecondClock()
         populateAlphabetScroller()
         populateSwipeApps()
         populateActionHints()
@@ -142,6 +151,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.statusBar -> toggleStatusBar()
             R.id.dateTime -> showDateTimeMenu(view)
             R.id.weatherWidget -> showWidgetPicker()
+            R.id.weatherBackground -> toggleWeatherBackground()
+            R.id.secondClock -> showTimeZonePicker()
             R.id.alphabetScroller -> toggleAlphabetScroller()
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = false)
             R.id.textSizeValue -> showTextSizeDialog()
@@ -207,6 +218,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.statusBar.setOnClickListener(this)
         binding.dateTime.setOnClickListener(this)
         binding.weatherWidget.setOnClickListener(this)
+        binding.weatherBackground.setOnClickListener(this)
+        binding.secondClock.setOnClickListener(this)
         binding.alphabetScroller.setOnClickListener(this)
         binding.swipeLeftApp.setOnClickListener(this)
         binding.swipeRightApp.setOnClickListener(this)
@@ -389,6 +402,76 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
     private fun populateWeather() {
         binding.weatherWidget.text = getString(if (hasWeatherWidget()) R.string.on else R.string.off)
+        binding.weatherBackgroundLayout.isVisible = hasWeatherWidget()
+        binding.weatherBackground.text =
+            getString(if (prefs.weatherTransparent) R.string.transparent else R.string.original)
+    }
+
+    private fun toggleWeatherBackground() {
+        prefs.weatherTransparent = !prefs.weatherTransparent
+        populateWeather()
+        viewModel.refreshHome(false)
+    }
+
+    private fun populateSecondClock() {
+        val zone = prefs.secondTimeZone
+        binding.secondClock.text = if (zone.isBlank()) getString(R.string.off)
+        else prefs.secondClockLabel.ifBlank { timeZoneCity(zone) }
+    }
+
+    private fun showTimeZonePicker() {
+        lateinit var picker: OlDialog
+        picker = requireContext().createDialog(
+            title = R.string.choose_time_zone,
+            action = R.string.close,
+            neutral = if (prefs.secondTimeZone.isNotBlank()) R.string.remove else 0,
+            onNeutral = { setSecondTimeZone("") },
+        ) { container ->
+            DialogTimeZonePickerBinding.inflate(layoutInflater, container, false).apply {
+                val adapter = TimeZonePickerAdapter(timeZoneChoices()) { choice ->
+                    timeZoneSearch.hideKeyboard()
+                    picker.dismiss()
+                    showClockLabelDialog(choice.id)
+                }
+                timeZoneChoices.layoutManager = LinearLayoutManager(requireContext())
+                timeZoneChoices.adapter = adapter
+                timeZoneSearch.doAfterTextChanged { adapter.filter(it?.toString().orEmpty()) }
+                root.layoutParams.height = 420.dpToPx()
+            }.root
+        }
+        showDialog(picker)
+    }
+
+    // A zone is named after one city, so the clock can be named after another, e.g. Kochi for Kolkata
+    private fun showClockLabelDialog(zone: String) {
+        var labelInput: EditText? = null
+        val dialog = requireContext().createDialog(
+            title = R.string.clock_name,
+            action = R.string.save,
+            onAction = { setSecondTimeZone(zone, labelInput?.text?.toString().orEmpty()) },
+        ) { container ->
+            DialogClockLabelBinding.inflate(layoutInflater, container, false).root.also {
+                it.hint = timeZoneCity(zone)
+                it.setText(timeZoneCity(zone))
+                it.setSelection(it.length())
+                labelInput = it
+            }
+        }
+        labelInput?.setOnEditorActionListener { view, actionId, _ ->
+            if (actionId != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
+            setSecondTimeZone(zone, view.text.toString())
+            dialog.dismiss()
+            true
+        }
+        showDialog(dialog)
+    }
+
+    private fun setSecondTimeZone(zone: String, label: String = "") {
+        prefs.secondTimeZone = zone
+        // Blank or unchanged keeps following the zone's own city name
+        prefs.secondClockLabel = label.trim().takeIf { it != timeZoneCity(zone) }.orEmpty()
+        populateSecondClock()
+        viewModel.toggleDateTime()
     }
 
     private fun showWidgetPicker() {

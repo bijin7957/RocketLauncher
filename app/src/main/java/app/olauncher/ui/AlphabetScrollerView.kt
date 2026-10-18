@@ -19,9 +19,10 @@ import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * Letter index along the edge of the home screen. Dragging along it bends the
- * letters into a curve around the finger, shows the current letter in a bubble
- * and reports it through [onLetterSelected].
+ * Letter index along the edge of the home screen, invisible until touched.
+ * Dragging along it fades the letters in, bends them into a curve around the
+ * finger, shows the current letter in a bubble and reports it through
+ * [onLetterSelected].
  *
  * The view is meant to overlay the screen at full width so the curve has room to
  * draw, but it only claims touches that start inside the narrow edge strip.
@@ -115,7 +116,7 @@ class AlphabetScrollerView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (letters.isEmpty()) return
+        if (letters.isEmpty() || progress == 0f) return
 
         val spacing = letterSpacing
         // The curve spans roughly half of the column on either side of the finger
@@ -135,7 +136,8 @@ class AlphabetScrollerView @JvmOverloads constructor(
             val x = columnX + direction * maxCurveOffset * weight * progress
 
             letterPaint.textSize = baseTextSize * (1f + 0.25f * weight * progress)
-            letterPaint.alpha = (140 + 115 * progress).toInt()
+            // Hidden until touched, the letters fade in with the curve
+            letterPaint.alpha = (255 * progress).toInt()
             canvas.drawText(letters[i], x, y - textCenterShift, letterPaint)
         }
 

@@ -47,6 +47,9 @@ class AlphabetScrollerView @JvmOverloads constructor(
 
     var onLetterSelected: ((String) -> Unit)? = null
 
+    /** Show the picked letter in a bubble beside the curve. */
+    var showBubble = true
+
     /** Draw the index along the start edge instead of the end edge. */
     var alignStart = false
         set(value) {
@@ -107,6 +110,18 @@ class AlphabetScrollerView @JvmOverloads constructor(
     private val columnX: Float
         get() = if (alignStart) edgeMargin else width - edgeMargin
 
+    /**
+     * How far from its edge the curve, and the bubble when shown, reach while dragging, so
+     * content beside the scroller can keep clear of it.
+     */
+    val reachWidth: Int
+        get() {
+            val widestLetter = Paint(letterPaint).apply { textSize = sp(13f) * 1.25f }.measureText("W")
+            var reach = edgeMargin + maxCurveOffset + widestLetter / 2f
+            if (showBubble) reach += bubbleGap + bubbleRadius * 2
+            return reach.toInt()
+        }
+
     private fun letterY(index: Int): Float = columnTop + letterSpacing * (index + 0.5f)
 
     private fun indexAt(y: Float): Int {
@@ -141,7 +156,7 @@ class AlphabetScrollerView @JvmOverloads constructor(
             canvas.drawText(letters[i], x, y - textCenterShift, letterPaint)
         }
 
-        if (selectedIndex in letters.indices && progress > 0f) {
+        if (showBubble && selectedIndex in letters.indices && progress > 0f) {
             val bubbleX = columnX + direction * (maxCurveOffset + bubbleGap + bubbleRadius)
             val bubbleY = touchY.coerceIn(letterY(0), letterY(letters.lastIndex))
             bubblePaint.alpha = (255 * progress).toInt()

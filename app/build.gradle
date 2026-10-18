@@ -1,6 +1,15 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
+// Release signing comes from environment variables (GitHub Actions) or, on the developer's
+// machine, ~/.android-keys/rocketlauncher-release.properties. Without either, release builds
+// are left unsigned.
+def signingProps = new Properties()
+def signingFile = new File(System.getProperty("user.home"), ".android-keys/rocketlauncher-release.properties")
+if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
+def signingValue = { String key -> System.getenv(key) ?: signingProps.getProperty(key) }
+def canSignRelease = signingValue("RELEASE_STORE_FILE") != null
+
 android {
     compileSdk 36
 
@@ -14,18 +23,30 @@ android {
     }
 
     defaultConfig {
-        applicationId "app.olauncher"
+        applicationId "app.rocketlauncher"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 113
-        versionName "v6.9.17"
+        versionCode 1
+        versionName "1.0.0"
 
         resourceConfigurations += ["en", "ar", "cs", "da", "de", "el", "es-rES", "es-rUS", "fi", "fr", "he", "hi", "hr", "hu", "in", "it", "ja", "ko", "nb", "nl", "pl", "pt-rBR", "ro", "ru-rRU", "sv", "th", "tr", "uk", "vi", "zh"]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            if (canSignRelease) {
+                storeFile file(signingValue("RELEASE_STORE_FILE"))
+                storePassword signingValue("RELEASE_STORE_PASSWORD")
+                keyAlias signingValue("RELEASE_KEY_ALIAS")
+                keyPassword signingValue("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (canSignRelease) signingConfig signingConfigs.release
             debuggable false
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
